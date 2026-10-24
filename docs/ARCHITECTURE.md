@@ -99,6 +99,14 @@ Routes are synchronous FastAPI handlers because editing operations are local, sh
 | `POST` | `/api/v1/projects/current/undo` / `/redo` | Restore prior/next timeline state |
 | `POST` | `/api/v1/projects/current/render` | Snapshot the project and submit a `render` job |
 | `GET` | `/api/v1/media/assets/{asset_id}/content` | Stream a source file with HTTP Range support (preview/seeking) |
+| `POST` | `/api/v1/projects/current/assets/{asset_id}/analyze` | Submit an `analysis` job for an asset |
+| `GET` | `/api/v1/projects/current/assets/{asset_id}/analysis` | Analysis status summary |
+| `GET` | `/api/v1/projects/current/assets/{asset_id}/analysis/artifacts` | Full artifact (shots, tracks/masks, speech, transcript) |
+| `GET` | `/api/v1/projects/current/assets/{asset_id}/analysis/search` | Caption search (`q`) or similar shots (`similar_to`) |
+| `GET` | `/api/v1/effects/types` | Effect registry (types, params, presets) |
+| `POST/PATCH/DELETE` | `/api/v1/projects/current/clips/{clip_id}/effects[/​{effect_id}]` | Effect add/update/remove |
+| `POST` | `/api/v1/projects/current/clips/{clip_id}/effects/{effect_id}/move` | Reorder an effect in the chain |
+| `PUT` | `/api/v1/projects/current/clips/{clip_id}/effects/{effect_id}/keyframes` | Replace a property's keyframes |
 
 FastAPI's generated OpenAPI UI remains available at `/docs` when the server is running.
 
@@ -148,7 +156,7 @@ The `/api/v1/logs` endpoint reads the bounded rotating log file and returns the 
 
 #### Model
 
-`Project` schema version is currently `2` (see `DATA_MODELS.md`). A project contains:
+`Project` schema version is currently `3` (see `DATA_MODELS.md`). A project contains:
 
 - `id`, `name`, creation/modification timestamps.
 - Asset references (`ProjectAsset`) with probed metadata (duration, dimensions, fps, codec, audio presence).
@@ -299,3 +307,39 @@ Source assets stream from `GET /api/v1/media/assets/{id}/content` with HTTP
 Range support, so the browser `<video>` element can seek. The edited preview
 is client-side sequential playback of source ranges and is labelled an
 approximation; the FFmpeg export is the canonical edited output.
+
+## Video intelligence (Phase 3) — `neuralcut/backend/intelligence/`
+
+`AnalysisService.analyze()` runs as the `analysis` background job (project
+snapshot of the asset at submission, cooperative cancellation between
+steps) and never touches the timeline. Pipeline: ffprobe metadata → ffmpeg
+scene-cut shot detection → grayscale frame sampling (96×54 @ 5fps, max 300
+frames) → per-shot motion levels → motion detection/tracking
+(`detection.py`: median background, threshold, connected components,
+greedy centroid/IoU linking, RLE masks) → per-shot color-histogram
+embeddings + heuristic captions → `silencedetect` speech segments →
+optional faster-whisper transcription (only when installed and
+`models.enabled=true`, else an explicit `unavailable` artifact).
+
+Artifacts are versioned JSON in `<data_dir>/analysis/<fingerprint>.json`;
+the fingerprint (size + mtime + sampled chunk hashes) gives cache reuse
+and automatic invalidation. Search endpoints provide caption token search
+and embedding cosine similarity.
+
+## Effects and compositing (Phase 4) — `neuralcut/backend/effects/`
+
+The registry in `effects/engine.py` is the single source of truth for
+effect types (`transform`, `color`, `blur`, `glow`, `bloom`), parameter
+ranges/defaults, presets, keyframe evaluation (linear/hold), and the
+FFmpeg filter mapping. All mutations flow through `TimelineService`
+(validated, one undo step each) into schema-v3 project documents.
+
+The renderer keeps the fast Phase 2 segment path for plain single-track
+timelines. Timelines with any effects or cross-track overlaps use the
+compositing path: atomic intervals at clip boundaries, keyframes evaluated
+at interval midpoints, tracks composited bottom-to-top with
+opacity/scale/position, audio mixed (`amix`, silence for audio-less
+layers), segments encoded identically and concatenated, output
+duration-verified. The browser edited-preview evaluates the same registry
+values at the playhead and applies CSS filter approximations — it is
+labelled an approximation in the UI.

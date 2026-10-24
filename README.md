@@ -1,6 +1,6 @@
 # NeuralCut
 
-NeuralCut is a **local-first AI video editor for Windows**, currently at **Phase 2: Editing Core** (version 0.2.0). It provides a real timeline editor: import local video, arrange/trim/split clips, undo/redo, preview source and edited output, and export a rendered MP4 with FFmpeg — all locally, with no cloud account and no NVIDIA GPU requirement. AI assistance is a later phase (see roadmap).
+NeuralCut is a **local-first AI video editor for Windows**, currently at **Phase 4: Effects and Animation** (version 0.4.0, including Phase 3 video intelligence). It provides a real timeline editor: import local video, arrange/trim/split clips, undo/redo, preview, analyze footage (shots, speech segments, retrieval captions, motion object tracks with masks), apply keyframed effects and multi-track compositing (transform/color/blur/glow/bloom), and export a rendered MP4 with FFmpeg — all locally, with no cloud account and no NVIDIA GPU requirement. Conversational AI editing is a later phase (see roadmap).
 
 ## What works in Phase 2
 
@@ -11,6 +11,11 @@ NeuralCut is a **local-first AI video editor for Windows**, currently at **Phase
 - **Preview** — a source preview plays the original file (with seeking via HTTP range requests), clearly separated from the edited-timeline preview, which plays clips back-to-back in the browser (an approximation; Export renders the real file).
 - **Export** — deterministic FFmpeg rendering as a cancellable background job with progress: clips are rendered in timeline order with correct trims, gaps become black/silent segments, audio-less clips get silence, and the output is verified to exist and match the expected duration. MP4 (H.264/AAC) output.
 - **Persistence** — timelines save/reopen in the versioned `.neuralcut` format (schema v2; v1 projects are migrated automatically).
+
+## What works in Phases 3–4
+
+- **Video intelligence (Phase 3)** — per-asset analysis as a background job (never edits the timeline): ffmpeg scene-cut shot detection; deterministic speech/silence segments; per-shot color-histogram embeddings and honest heuristic captions (dominant color + motion level) with text/similarity shot search; and **CPU motion object detection/tracking** (background subtraction → connected components → multi-frame tracks) with per-frame bounding boxes and RLE masks, drawn as an overlay on the source preview. Artifacts are versioned JSON in `<data_dir>/analysis/`, cached by source-file fingerprint and invalidated automatically when the source changes. Word-level transcription is available only when the optional `faster-whisper` engine is installed *and* `models.enabled=true`; otherwise the transcript artifact honestly reports `unavailable` (no fabricated text).
+- **Effects & animation (Phase 4)** — ordered effect chains per clip: `transform` (opacity/scale/x/y), `color` (brightness/contrast/saturation), `blur`, `glow`, and `bloom`, with validated parameters, presets (`fade-in`, `punch-in`, `subtle-glow`, `strong-bloom`), enable/disable, reordering, and **keyframes** (linear/hold) for every parameter. Effects persist in the project (schema v3), participate in undo/redo, and render deterministically: multi-track timelines are composited (higher tracks overlay lower ones) and keyframes are evaluated per atomic render interval. The browser preview approximates effects with CSS filters and is labelled as an approximation.
 
 ## What worked in Phase 1 (foundation)
 
@@ -27,8 +32,8 @@ NeuralCut is a **local-first AI video editor for Windows**, currently at **Phase
 
 ## What is intentionally not implemented yet
 
-- No effects, transitions, keyframes, text, or compositing (multi-track overlap compositing is not supported; export flattens the timeline into one sequence).
-- No object detection/tracking, masks, transcription, or other video intelligence.
+- No transitions, text/titles, masks-as-effects (track masks are analysis data), speed changes, or semantic ML object classification. The Phase 3 detector finds *moving regions* on CPU; it does not label them "car"/"person".
+- No word-level transcription unless the optional ASR engine is installed and models are enabled (see above).
 - No object detection/tracking, masks, transcription, or other video intelligence.
 - No AI chat, model download, model inference, or GPU initialization.
 - No training, autonomous self-improvement, Windows installer, or production Tauri bundle.
@@ -111,6 +116,8 @@ NeuralCut targets Windows first; Linux/macOS are supported as development enviro
    - *Undo/Redo* buttons reverse/restore any edit. **Save project** persists the timeline (edits are not auto-saved).
    - *Preview*: “Source preview” plays an original asset; “Edited timeline preview” plays the arranged clips in the browser. They are labelled separately on purpose — only Export produces the final file.
    - *Export*: enter an output `.mp4` path and size/fps, then Export. Rendering runs as a background job with progress and cancellation (also visible under Background Jobs).
+   - *Analyze*: use Analyze on an asset (or “Analyze selected source asset”), then View analysis — shots, speech segments, transcript status, and object tracks appear, and track boxes are drawn over the source preview as it plays.
+   - *Effects*: select a clip; in “Effects & animation” add effects (or presets), edit parameters, toggle/reorder/delete them, and add keyframes (property, clip-local time, value, linear/hold). Export renders them; the edited preview only approximates them.
 5. **Background Jobs** — submit/cancel demo and render jobs and observe progress.
 6. **Settings / Logs** — inspect effective configuration and recent structured logs.
 

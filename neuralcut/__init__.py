@@ -8,5 +8,5 @@ No timeline, editing actions, AI model execution, or self-improvement is
 implemented in this phase — those are defined as extension points only.
 """
 
-__version__ = "0.2.0"
-__phase__ = "2 — Editing Core"
+__version__ = "0.4.0"
+__phase__ = "4 — Effects and Animation"

@@ -583,6 +583,10 @@ async function boot() {
   $el("asset-list")?.addEventListener("click", async (e) => {
     const add = e.target.closest("[data-add-clip]");
     const remove = e.target.closest("[data-remove-asset]");
+    const analyze = e.target.closest("[data-analyze-asset]");
+    const view = e.target.closest("[data-view-analysis]");
+    if (analyze) { try { await analyzeAsset(analyze.dataset.analyzeAsset); } catch (err) { msg("timeline-msg", err.message, "err"); } return; }
+    if (view) { await viewAnalysis(view.dataset.viewAnalysis); return; }
     try {
       if (add) {
         const data = await timelineCall("/projects/current/clips", {
@@ -699,6 +703,14 @@ async function boot() {
     } catch (err) { msg("timeline-msg", err.message, "err"); }
   });
 
+  $el("source-video")?.addEventListener("timeupdate", drawTrackOverlay);
+  $el("source-video")?.addEventListener("seeked", drawTrackOverlay);
+  $el("btn-analyze-selected")?.addEventListener("click", async () => {
+    const assetId = $el("sel-source-asset")?.value;
+    if (!assetId) { msg("timeline-msg", "Import and select an asset first.", "err"); return; }
+    try { await analyzeAsset(assetId); } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+
   setText("api-url", API_BASE || window.location.origin);
 }
 
@@ -765,6 +777,8 @@ function renderTimeline() {
         </div>
         <div class="controls">
           <button class="btn" data-add-clip="${escapeHtml(a.id)}" ${a.missing ? "disabled" : ""}>Add to timeline</button>
+          <button class="btn" data-analyze-asset="${escapeHtml(a.id)}" ${a.missing ? "disabled" : ""}>Analyze</button>
+          <button class="btn" data-view-analysis="${escapeHtml(a.id)}" ${a.missing ? "disabled" : ""}>View analysis</button>
           <button class="btn" data-remove-asset="${escapeHtml(a.id)}">Remove</button>
         </div>
       </div>`).join(""));
@@ -825,6 +839,8 @@ function renderClipEditor() {
         <button class="btn" type="button" id="btn-remove-clip" style="color:var(--danger)">Remove clip</button>
       </div>
     </form>`;
+  box.insertAdjacentHTML("beforeend", renderEffectsEditor(clip));
+  void wireEffectsEditor(clip);
   $el("form-clip-edit").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -914,6 +930,19 @@ function editedTimeUpdate() {
   const clip = timelineState.clips.find((c) => c.id === editedPlayback.clipId);
   if (!clip) return;
   const timelineTime = clip.timeline_start_seconds + (video.currentTime - clip.source_start_seconds);
+  // Preview approximation of the effect chain (export renders it exactly):
+  const localT = video.currentTime - clip.source_start_seconds;
+  let filter = "", opacity = 1;
+  for (const effect of (clip.effects || [])) {
+    if (!effect.enabled) continue;
+    const v = (name) => evaluatedEffectValue(effect, name, localT);
+    if (effect.type === "color") filter += ` brightness(${1 + v("brightness")}) contrast(${v("contrast")}) saturate(${v("saturation")})`;
+    if (effect.type === "blur") filter += ` blur(${v("radius") / 4}px)`;
+    if (effect.type === "glow" || effect.type === "bloom") filter += ` brightness(${1 + v("strength") * 0.3})`;
+    if (effect.type === "transform") opacity = v("opacity");
+  }
+  video.style.filter = filter || "";
+  video.style.opacity = String(opacity);
   $el("edited-seek").value = String(Math.min(timelineTime, timelineState.duration_seconds));
   setText("edited-time", `${timelineTime.toFixed(1)}s / ${fmtTime(timelineState.duration_seconds)}`);
   if (video.currentTime >= clip.source_end_seconds - 0.05 || video.ended) {
@@ -923,4 +952,225 @@ function editedTimeUpdate() {
     if (next) playEditedFrom(next.timeline_start_seconds);
     else stopEditedPlayback();
   }
+}
+
+/* ---------- Phase 3 analysis ---------- */
+
+let analysisState = { assetId: null, artifact: null };
+const EFFECT_TYPES = ["transform", "color", "blur", "glow", "bloom"];
+const EFFECT_PARAMS = {
+  transform: ["opacity", "scale", "x", "y"],
+  color: ["brightness", "contrast", "saturation"],
+  blur: ["radius"],
+  glow: ["strength", "radius"],
+  bloom: ["strength", "radius", "threshold"],
+};
+
+async function analyzeAsset(assetId) {
+  msg("timeline-msg", "Analysis job submitted…", "");
+  const data = await apiJson(`/projects/current/assets/${encodeURIComponent(assetId)}/analyze`, {
+    method: "POST", body: { force: false },
+  });
+  const jobId = data.job.id;
+  setText("analysis-status", `Analysis running (job ${jobId})…`);
+  const timer = setInterval(async () => {
+    try {
+      const job = await apiJson(`/jobs/${encodeURIComponent(jobId)}`);
+      setText("analysis-status", `Analysis: ${job.status} ${job.progress_message || ""} (${Math.round(job.progress)}%)`);
+      if (["completed", "failed", "cancelled"].includes(job.status)) {
+        clearInterval(timer);
+        if (job.status === "completed") await viewAnalysis(assetId);
+        else msg("timeline-msg", `Analysis ${job.status}: ${job.error || ""}`, "err");
+      }
+    } catch (_) { clearInterval(timer); }
+  }, 1000);
+}
+
+async function viewAnalysis(assetId) {
+  try {
+    const artifact = await apiJson(`/projects/current/assets/${encodeURIComponent(assetId)}/analysis/artifacts`);
+    analysisState = { assetId, artifact };
+    renderAnalysis();
+  } catch (err) {
+    setText("analysis-status", `No artifacts yet: ${err.message}`);
+    setHtml("analysis-results", "");
+    analysisState = { assetId, artifact: null };
+  }
+}
+
+function renderAnalysis() {
+  const a = analysisState.artifact;
+  if (!a) return;
+  setText("analysis-status",
+    `Analyzed ${new Date(a.analyzed_at).toLocaleString()} · ${a.shots.length} shot(s) · ${a.tracks.length} track(s) · transcript: ${a.transcript.status}`);
+  const tracks = a.tracks.map((tr) => {
+    const frames = tr.frames.map((f) => `${f.time_seconds.toFixed(1)}s`).join(", ");
+    return `<div class="effect-row"><strong>${escapeHtml(tr.id)}</strong> ${escapeHtml(tr.label)}
+      <span class="muted">${tr.start_seconds.toFixed(1)}s–${tr.end_seconds.toFixed(1)}s · displacement ${(tr.displacement * 100).toFixed(0)}% of frame · masks ${tr.mask_resolution.join("×")} (RLE)</span>
+      <div class="muted">frames: ${escapeHtml(frames)}</div></div>`;
+  }).join("") || '<p class="muted">No moving objects tracked.</p>';
+  const shots = a.shots.map((s) =>
+    `<span class="track-chip">#${s.index + 1} ${s.start_seconds.toFixed(1)}–${s.end_seconds.toFixed(1)}s · ${escapeHtml(s.dominant_color)} · motion ${s.motion_level}</span>`).join("");
+  const speech = a.speech_segments.map((s) =>
+    `<span class="track-chip">${s.start_seconds.toFixed(1)}–${s.end_seconds.toFixed(1)}s</span>`).join("") || "none";
+  const transcript = a.transcript.status === "ready"
+    ? a.transcript.segments.map((s) => `<div>${s.start_seconds.toFixed(1)}s ${escapeHtml(s.text)}</div>`).join("")
+    : `<span class="muted">unavailable — ${escapeHtml(a.transcript.reason || "")}</span>`;
+  setHtml("analysis-results", `
+    <h4>Object tracks (drawn on the source preview)</h4>${tracks}
+    <h4>Shots</h4><div>${shots}</div>
+    <h4>Speech segments</h4><div>${speech}</div>
+    <h4>Transcript</h4><div>${transcript}</div>`);
+  drawTrackOverlay();
+}
+
+function drawTrackOverlay() {
+  const canvas = $el("track-overlay");
+  const video = $el("source-video");
+  if (!canvas || !video) return;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const a = analysisState.artifact;
+  if (!a || analysisState.assetId !== $el("sel-source-asset")?.value) return;
+  const time = video.currentTime || 0;
+  ctx.lineWidth = 3;
+  ctx.font = "20px sans-serif";
+  for (const tr of a.tracks) {
+    let best = null;
+    for (const f of tr.frames) {
+      if (!best || Math.abs(f.time_seconds - time) < Math.abs(best.time_seconds - time)) best = f;
+    }
+    if (!best || Math.abs(best.time_seconds - time) > 0.35) continue;
+    const [x, y, w, h] = best.bbox;
+    ctx.strokeStyle = "#4da3ff";
+    ctx.fillStyle = "#4da3ff";
+    ctx.strokeRect(x * canvas.width, y * canvas.height, w * canvas.width, h * canvas.height);
+    ctx.fillText(`${tr.id} ${tr.label}`, x * canvas.width, Math.max(20, y * canvas.height - 6));
+  }
+}
+
+/* ---------- Phase 4 effects ---------- */
+
+function evaluatedEffectValue(effect, param, t) {
+  let value = effect.params?.[param] ?? 0;
+  const frames = effect.keyframes?.[param];
+  if (frames && frames.length) {
+    const sorted = [...frames].sort((a, b) => a.time_seconds - b.time_seconds);
+    if (t <= sorted[0].time_seconds) value = sorted[0].value;
+    else if (t >= sorted[sorted.length - 1].time_seconds) value = sorted[sorted.length - 1].value;
+    else for (let i = 0; i + 1 < sorted.length; i++) {
+      const prev = sorted[i], cur = sorted[i + 1];
+      if (t >= prev.time_seconds && t <= cur.time_seconds) {
+        value = cur.interpolation === "hold" ? prev.value
+          : prev.value + (cur.value - prev.value) * ((t - prev.time_seconds) / Math.max(cur.time_seconds - prev.time_seconds, 1e-9));
+        break;
+      }
+    }
+  }
+  return value;
+}
+
+function renderEffectsEditor(clip) {
+  const effects = clip.effects || [];
+  const rows = effects.map((e, idx) => {
+    const params = (EFFECT_PARAMS[e.type] || []).map((name) =>
+      `<label>${name} <input type="number" step="0.05" data-param="${name}" value="${e.params?.[name] ?? ""}"></label>`).join(" ");
+    const keyframes = Object.entries(e.keyframes || {}).map(([prop, frames]) =>
+      `<div class="muted">${escapeHtml(prop)}: ${frames.map((f) => `${f.time_seconds}s→${f.value} (${f.interpolation})`).join(", ")}</div>`).join("");
+    return `<div class="effect-row" data-effect="${escapeHtml(e.id)}">
+      <strong>${escapeHtml(e.type)}</strong> ${e.enabled ? "" : '<span class="muted">(disabled)</span>'}
+      <div class="controls">${params}<button class="btn" data-fx-apply="${escapeHtml(e.id)}">Apply params</button></div>
+      <div class="controls">
+        <button class="btn" data-fx-toggle="${escapeHtml(e.id)}">${e.enabled ? "Disable" : "Enable"}</button>
+        <button class="btn" data-fx-up="${escapeHtml(e.id)}" ${idx === 0 ? "disabled" : ""}>↑</button>
+        <button class="btn" data-fx-down="${escapeHtml(e.id)}" ${idx === effects.length - 1 ? "disabled" : ""}>↓</button>
+        <button class="btn" data-fx-delete="${escapeHtml(e.id)}" style="color:var(--danger)">Delete</button>
+      </div>
+      <div class="controls">
+        <label>Keyframe property <select data-kf-prop="${escapeHtml(e.id)}">${(EFFECT_PARAMS[e.type] || []).map((n) => `<option>${n}</option>`).join("")}</select></label>
+        <label>at (clip s) <input type="number" step="0.1" min="0" value="0" data-kf-time="${escapeHtml(e.id)}"></label>
+        <label>value <input type="number" step="0.05" value="1" data-kf-value="${escapeHtml(e.id)}"></label>
+        <select data-kf-interp="${escapeHtml(e.id)}"><option>linear</option><option>hold</option></select>
+        <button class="btn" data-kf-add="${escapeHtml(e.id)}">Add keyframe</button>
+        <button class="btn" data-kf-clear="${escapeHtml(e.id)}">Clear property keyframes</button>
+      </div>
+      ${keyframes}
+    </div>`;
+  }).join("");
+  return `<div class="effect-editor">
+    <h4>Effects & animation (apply in chain order)</h4>
+    <div class="controls">
+      <select id="fx-new-type">${EFFECT_TYPES.map((n) => `<option>${n}</option>`).join("")}</select>
+      <select id="fx-new-preset"><option value="">no preset</option><option>subtle-glow</option><option>strong-bloom</option><option>fade-in</option><option>punch-in</option></select>
+      <button class="btn" id="btn-fx-add" type="button">Add effect</button>
+    </div>
+    ${rows || '<p class="muted">No effects on this clip.</p>'}
+  </div>`;
+}
+
+async function wireEffectsEditor(clip) {
+  const box = $el("clip-editor");
+  if (!box) return;
+  box.querySelector("#btn-fx-add")?.addEventListener("click", async () => {
+    const preset = box.querySelector("#fx-new-preset").value;
+    const type = box.querySelector("#fx-new-type").value;
+    try {
+      await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects`, {
+        method: "POST", body: preset ? { preset } : { type },
+      });
+      msg("timeline-msg", "Effect added.", "ok");
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+  const clipEffects = clip.effects || [];
+  const act = async (selector, fn) => {
+    box.querySelectorAll(selector).forEach((el) => el.addEventListener("click", async () => {
+      try { await fn(el); } catch (err) { msg("timeline-msg", err.message, "err"); }
+    }));
+  };
+  await act("[data-fx-toggle]", async (el) => {
+    const effect = clipEffects.find((e) => e.id === el.dataset.fxToggle);
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(el.dataset.fxToggle)}`,
+      { method: "PATCH", body: { enabled: !effect.enabled } });
+  });
+  await act("[data-fx-delete]", async (el) => {
+    selectedClipId = clip.id;
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(el.dataset.fxDelete)}`, { method: "DELETE" });
+  });
+  await act("[data-fx-up]", async (el) => {
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(el.dataset.fxUp)}/move`,
+      { method: "POST", body: { direction: -1 } });
+  });
+  await act("[data-fx-down]", async (el) => {
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(el.dataset.fxDown)}/move`,
+      { method: "POST", body: { direction: 1 } });
+  });
+  await act("[data-fx-apply]", async (el) => {
+    const row = el.closest(".effect-row");
+    const params = {};
+    row.querySelectorAll("[data-param]").forEach((input) => { params[input.dataset.param] = parseFloat(input.value); });
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(el.dataset.fxApply)}`,
+      { method: "PATCH", body: { params } });
+    msg("timeline-msg", "Effect parameters updated.", "ok");
+  });
+  await act("[data-kf-add]", async (el) => {
+    const id = el.dataset.kfAdd;
+    const effect = clipEffects.find((e) => e.id === id);
+    const prop = box.querySelector(`[data-kf-prop="${id}"]`).value;
+    const existing = (effect.keyframes?.[prop] || []).filter(
+      (f) => Math.abs(f.time_seconds - parseFloat(box.querySelector(`[data-kf-time="${id}"]`).value)) > 1e-9);
+    const frames = [...existing, {
+      time_seconds: parseFloat(box.querySelector(`[data-kf-time="${id}"]`).value),
+      value: parseFloat(box.querySelector(`[data-kf-value="${id}"]`).value),
+      interpolation: box.querySelector(`[data-kf-interp="${id}"]`).value,
+    }].sort((a, b) => a.time_seconds - b.time_seconds);
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(id)}/keyframes`,
+      { method: "PUT", body: { property: prop, keyframes: frames } });
+    msg("timeline-msg", "Keyframe added.", "ok");
+  });
+  await act("[data-kf-clear]", async (el) => {
+    const id = el.dataset.kfClear;
+    const prop = box.querySelector(`[data-kf-prop="${id}"]`).value;
+    await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(id)}/keyframes`,
+      { method: "PUT", body: { property: prop, keyframes: [] } });
+  });
 }

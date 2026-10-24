@@ -27,7 +27,7 @@ def test_project_roundtrip(tmp_path: Path) -> None:
 
     assert loaded.id == "proj-1"
     assert loaded.name == "Roundtrip"
-    assert loaded.version == 2
+    assert loaded.version == 3
     assert saved.exists()
 
 
@@ -60,7 +60,7 @@ def test_project_store_rejects_invalid_json_and_newer_version(tmp_path: Path) ->
     assert "newer than supported" in exc.value.message
 
 
-def test_v1_project_migrates_to_v2_with_sequential_clips(tmp_path: Path) -> None:
+def test_v1_project_migrates_to_current_with_sequential_clips(tmp_path: Path) -> None:
     v1 = {
         "version": 1,
         "id": "p1",
@@ -78,7 +78,7 @@ def test_v1_project_migrates_to_v2_with_sequential_clips(tmp_path: Path) -> None
 
     loaded = ProjectStore.load(path)
 
-    assert loaded.version == 2
+    assert loaded.version == 3
     assert loaded.clips[0].timeline_start_seconds == 0.0
     assert loaded.clips[0].source_start_seconds == 1.0
     assert loaded.clips[0].duration_seconds == 3.0

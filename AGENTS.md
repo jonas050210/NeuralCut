@@ -4,14 +4,14 @@ Welcome to NeuralCut. Read this file before changing code.
 
 ## Project state
 
-NeuralCut is a local-first AI video editor for Windows. The repository currently implements **Phase 1: Foundation** and **Phase 2: Editing Core**:
+NeuralCut is a local-first AI video editor for Windows. The repository currently implements **Phases 1–4** (foundation, editing core, video intelligence, effects/animation):
 
 - Python/FastAPI backend.
 - Vanilla JavaScript frontend served by the backend.
 - Tauri 2 shell skeleton (not yet compiled/verified).
 - Validated config, JSON project persistence, background jobs, logging, diagnostics, and tests.
 
-Do **not** start Phase 3 or later work unless the project owner explicitly requests that phase. In particular, do not add object tracking, advanced effects, AI chat/tool execution, model training, or autonomous self-improvement as incidental “improvements.” Phase 2 scope is: schema-v2 timeline, import/probe, clip operations, undo/redo, source/edited preview, and FFmpeg export via background jobs.
+Do **not** start Phase 5 or later work unless the project owner explicitly requests that phase (Phase 8 is a separate audit — never implement it incidentally). In particular, do not add AI chat/tool execution, model training, or autonomous self-improvement as incidental “improvements.”
 
 ## Source of truth
 
@@ -33,6 +33,9 @@ Do **not** start Phase 3 or later work unless the project owner explicitly reque
 - **Render only through the job manager:** rendering is submitted as the `render` job type with a project snapshot; the engine must keep polling `cancel_event` and must verify output duration before reporting success.
 - **Project schema discipline:** current schema is v2. Any change bumps `PROJECT_SCHEMA_VERSION`, adds a raw-dict migration in `projects/model.py`, and adds a committed old-version load test.
 - **Media is referenced, not copied:** assets store local paths. Missing source files must surface as explicit errors/markers, never silent substitution.
+- **Analysis is derived data:** Phase 3 artifacts live in `<data_dir>/analysis/` keyed by source fingerprint — never in the project document, and analysis must never mutate the timeline. The motion detector must be described honestly (moving regions, no semantic labels); never fabricate transcripts — report `unavailable` without the optional ASR engine.
+- **Effects only through the registry:** effect types/parameters/ranges are defined once in `backend/effects/engine.py`; service, API, UI, preview, and renderer must all go through it. Effect/keyframe mutations go through `TimelineService` like every other edit (validation + undo).
+- **Schema discipline (current: v3):** any project-model change bumps the version, adds a raw-dict migration, and adds an old-version load test.
 
 ## Repository map
 

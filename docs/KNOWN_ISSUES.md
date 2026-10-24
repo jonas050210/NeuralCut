@@ -25,6 +25,23 @@ Known packaging gaps:
 
 ## Phase 2 functional limitations
 
+### Video intelligence limits (Phase 3)
+
+- **Motion detector, not a semantic detector:** tracks are `moving_object` regions from background subtraction at 96×54 / 5fps sampling. Static objects are invisible to it, a moving camera turns the whole frame into motion, lighting changes create false regions, objects that stop for >2s end their track, and small/fast objects may be missed or merged. It must never be described as car/person recognition.
+- **Transcription is off by default:** without the optional faster-whisper install and `models.enabled=true`, users get speech *segments* only. ASR accuracy, word timing, and model-download behaviour are unverified in the test environment.
+- **Heuristic captions/embeddings are retrieval aids**, based on dominant color + motion and a 12-bin color histogram — not semantic scene understanding.
+- Analysis sampling caps at 300 frames (~60s at 5fps); longer assets are analyzed over their opening portion only for tracks/motion (shots still span the full file). This truncation is not yet surfaced in the UI beyond artifact timing.
+- Artifact fingerprints use sampled chunks + size/mtime; a same-size edit preserving mtime could theoretically go stale — use Analyze with force (re-analyze) after replacing a source file in place. (The Analyze button currently submits `force=false`; the API accepts `force=true`.)
+
+### Effects limits (Phase 4)
+
+- **ffmpeg version sensitivity (found by CI):** with the runner's ffmpeg 8.x, framesync-based effect chains could emit runaway video stream durations (a 2s clip reported as 2048s) while audio stayed correct. Composite segments are therefore hard-bounded with `trim`/`setpts` + `atrim`/`asetpts` and an output `-t`, making segment length exact across ffmpeg builds. Prefer a current ffmpeg (7.x/8.x) and report render-duration mismatches with the ffmpeg version attached.
+### Effects limits (Phase 4)
+
+- Keyframes are evaluated once per atomic render interval (at its midpoint), so a fast ramp inside one long clip renders as steps at clip boundaries rather than a continuous ramp. The preview evaluates at the playhead, so preview/export can differ slightly on ramps.
+- No transitions, text, speed ramps, or mask-based effects (track masks are analysis data, not yet effect inputs).
+- Compositing re-encodes every interval; long multi-track projects render slower than the Phase 2 single-track path.
+
 ### Editing core limits
 
 - Export is **MP4 (H.264/AAC) only**; no other containers/codecs, transitions, effects, text, speed changes, or keyframes.

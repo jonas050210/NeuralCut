@@ -63,6 +63,8 @@ These are research directions, not current dependencies. Re-validate versions, l
 
 **Phase 2 status note:** the deterministic tool surface this plan assumes now exists — `TimelineService` operations (import/add/move/trim/split/remove), snapshot undo, and the `render` job are validated, typed, and test-covered. A future Phase 5 orchestrator should call exactly these operations; no AI/model code was added in Phase 2.
 
+**Phase 3–4 status note:** Phase 3 deliberately ships a *non-ML* motion detector (deterministic, CPU, offline) rather than the learned perception models discussed below — see D-019. Its track/mask representation is the one a future opt-in ML detector should emit. Phase 4's effect operations extend the validated tool surface (registry-constrained parameters and keyframes). The only model-adjacent code that exists is the optional faster-whisper transcription path, gated on both installation and `models.enabled=true`; the LLM orchestrator, shot/VLM specialists, and routing described below remain unimplemented Phase 5 research directions.
+
 ### Orchestrator LLM
 
 - Candidate class: Qwen-family 4–9B instruct GGUF models.

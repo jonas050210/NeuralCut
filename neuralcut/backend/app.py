@@ -46,9 +46,11 @@ def build_app(container: Container | None = None) -> FastAPI:
 
     # Built-in job types: demo (Phase 1) and render (Phase 2).
     register_demo_jobs(container.job_manager)
+    from neuralcut.backend.intelligence.analysis import register_analysis_jobs
     from neuralcut.backend.rendering.ffmpeg import register_render_jobs
 
     register_render_jobs(container.job_manager, container)
+    register_analysis_jobs(container.job_manager, container)
 
     # Frontend: serve static files; every client route falls back to index.html
     # so the SPA can use hash-based routing without server configuration.

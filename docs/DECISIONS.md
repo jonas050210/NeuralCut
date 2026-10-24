@@ -155,3 +155,35 @@ This log records important Phase 1 decisions, reasons, consequences, and what wo
 **Reason:** Real-time rendered preview (proxies/engine) is a larger system; sequential playback gives immediate feedback with zero extra dependencies while keeping the distinction honest in the UI.
 
 **Consequence:** Edited preview can show small seams at clip boundaries and does not render gaps as timed black (it skips to the next clip). Frame-accurate rendered preview is future work if needed.
+
+## D-019 — CPU motion detection instead of a bundled ML detector (Phase 3)
+
+**Decision:** Object detection/tracking is implemented as deterministic motion analysis (median background subtraction → connected components → greedy centroid/IoU tracking) on ffmpeg-extracted frames, with RLE masks. No ML model is bundled or downloaded.
+
+**Reason:** The Phase 3 acceptance tests (notably a moving-car fixture) must run offline, on CPU, deterministically, and in CI. A bundled YOLO-class model adds download/licensing/GPU-expectation problems the roadmap explicitly defers. The track representation (normalized bboxes + masks + provenance) is detector-agnostic, so an opt-in ML detector can replace the front end later without changing storage or UI.
+
+**Consequence:** Tracks are labelled `moving_object` — never semantically "car"/"person". Static objects, moving cameras, and long-stopped objects are known misses (see KNOWN_ISSUES). Detection resolution is 96×54, so small/fast objects are approximate.
+
+## D-020 — Analysis artifacts are fingerprinted sidecar files
+
+**Decision:** Shots/tracks/embeddings/transcripts live in `<data_dir>/analysis/<fingerprint>.json` (format v1), keyed by a content fingerprint (size + mtime + sampled chunk hashes), not in the project document.
+
+**Reason:** Derived data is large, regenerable, and shared across projects that reference the same file; the project file must stay the canonical *editorial* state. Fingerprinting gives cache reuse and automatic invalidation without hashing whole files on every check.
+
+**Consequence:** Artifacts are per-machine (not portable with the project file) and are simply recomputed on another machine. Deleting the analysis folder is always safe.
+
+## D-021 — Optional ASR, honest transcript status
+
+**Decision:** Word-level transcription runs only when `faster-whisper` is installed and `models.enabled=true` (CPU `tiny` model). Otherwise the artifact reports `transcript.status="unavailable"` with a reason, while deterministic speech/silence segments are still produced.
+
+**Reason:** NeuralCut must never fabricate transcripts, and model downloads must stay opt-in per the project constraints.
+
+**Consequence:** Out of the box, users get speech *segments*, not words. ASR accuracy/timing is unverified until someone runs the optional path on fixtures.
+
+## D-022 — Effect registry + interval-midpoint keyframe evaluation (Phase 4)
+
+**Decision:** One registry (`backend/effects/engine.py`) defines effect types, parameter defaults/ranges, presets, and the FFmpeg filter mapping. Rendering splits the timeline into atomic intervals at clip boundaries, evaluates keyframed parameters at each interval midpoint, composites tracks bottom-to-top, and encodes per-interval segments (identical parameters, concat stream-copy, as in D-017). The browser preview evaluates the same registry values at the playhead with CSS filters.
+
+**Reason:** A single registry keeps service validation, UI, preview, and renderer consistent. Interval-midpoint evaluation is deterministic, testable, and cheap; per-frame expression evaluation in ffmpeg would be slower and harder to keep preview-consistent.
+
+**Consequence:** Very fast keyframe ramps are approximated stepwise per interval (intervals are at most one clip long; a ramp inside a long clip evaluates at that clip's midpoints per boundary interval — i.e., per clip). Finer evaluation is possible later by subdividing intervals without changing the data model.

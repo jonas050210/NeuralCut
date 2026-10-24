@@ -4,7 +4,7 @@ This file distills the preserved research deliverable:
 
 - [`BkrR_L97Sx7hVBdMMez7lfX9Rvu4JiTz4Q8Jov79iQY.md`](../BkrR_L97Sx7hVBdMMez7lfX9Rvu4JiTz4Q8Jov79iQY.md)
 
-**Implementation status:** Phase 1–2 follow this document's central recommendation — a deterministic editing core with structured, validated project state. The Phase 2 timeline service and FFmpeg renderer are that core; the LLM orchestrator, perception specialists, and training loop described below remain unimplemented research directions for Phases 3–6.
+**Implementation status:** Phases 1–4 follow this document's central recommendation — a deterministic editing core with structured, validated project state. Phase 3 implements analysis with a deliberately non-ML motion detector (learned perception remains a future opt-in replacement with the same artifact representation), and Phase 4 adds the keyframed effects/compositing layer. The LLM orchestrator, learned perception specialists, and training loop described below remain unimplemented research directions for Phases 5–6.
 
 That original file remains unchanged and is the detailed source with citations. Its evidence labels should be preserved when using its claims:
 

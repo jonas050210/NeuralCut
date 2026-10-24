@@ -27,7 +27,16 @@ The long-term experience is an editor that can:
 - Users who want AI help without uploading footage to cloud services.
 - Power users who need understandable project data, repeatable operations, and control over automated changes.
 
-## Phase 2 scope (current)
+## Phases 3–4 scope (current)
+
+Phase 3 (Video Intelligence): on-demand per-asset analysis jobs producing versioned, cached, fingerprint-invalidated artifacts — shot detection, speech/silence segments, optional ASR transcription (honest `unavailable` by default), per-shot embeddings/captions for retrieval, and CPU motion object detection/tracking with RLE masks inspectable in the UI. Analysis never edits the timeline.
+
+Phase 4 (Effects and Animation): ordered per-clip effect chains (transform/color/blur/glow/bloom) with validated parameters, presets, enable/disable/reorder, and linear/hold keyframes on every parameter; multi-track compositing and deterministic FFmpeg rendering of effects; browser preview approximates effects explicitly.
+
+Phases 3–4 exclude AI chat commands, model training, and self-improvement (Phases 5–6) and any Phase 8 audit work.
+
+## Phase 2 scope
+
 
 Phase 2 adds the editing core on top of the foundation:
 
@@ -70,7 +79,9 @@ Phase 1 did not implement (Phase 2 has since added the timeline items):
 ## Long-term roadmap summary
 
 1. **Foundation** — architecture, infrastructure, persistence, docs, tests. *(done)*
-2. **Editing Core** — timeline, clip operations, undo/redo, rendering, export. *(current — implemented; Windows-laptop verification pending)*
+2. **Editing Core** — timeline, clip operations, undo/redo, rendering, export. *(done)*
+3. **Video Intelligence** — analysis, motion object detection/tracking, masks. *(done — CPU motion detector; semantic ML detection is future opt-in work)*
+4. **Effects and Animation** — keyframes, compositing, glow/bloom, effect chains. *(done)*
 3. **Video Intelligence** — analysis, object detection, tracking, masks.
 4. **Effects and Animation** — keyframes, compositing, glow, bloom, effect chains.
 5. **AI Editing Agent** — chat, model routing, validated tool calls, controlled execution.

@@ -6,6 +6,23 @@ All significant changes to NeuralCut are recorded here.
 
 - Nothing yet.
 
+## [0.4.0] — 2026-10-24 — Phases 3 (Video Intelligence) + 4 (Effects and Animation)
+
+### Added
+
+- **Phase 3 analysis** (`backend/intelligence/`): per-asset background analysis jobs — ffmpeg scene-cut shot detection, speech/silence segments, per-shot color-histogram embeddings + heuristic captions with text/similarity search, and CPU motion object detection/tracking (background subtraction, connected components, greedy tracking) with normalized bboxes and RLE masks at 96×54. Artifacts are versioned sidecar JSON under `<data_dir>/analysis/`, cached by source fingerprint with automatic invalidation. Optional faster-whisper transcription only when installed and `models.enabled=true`; otherwise an honest `unavailable` status. UI: analyze/view per asset, artifact summary, track boxes overlaid on the source preview. Analysis never modifies the timeline.
+- **Phase 4 effects** (project schema v3 with v2→v3 migration): ordered per-clip effect chains — transform (opacity/scale/x/y), color, blur, glow, bloom — with a single validating registry, presets, enable/disable/reorder, and linear/hold keyframes for every parameter. All effect operations go through `TimelineService` (validated, one undo step each) and persist exactly through save/load.
+- **Compositing renderer**: timelines with effects or overlapping tracks render as atomic intervals composited bottom-to-top (overlay with keyframed opacity/scale/position, per-clip effect filter chains, audio mixing; silence for audio-less layers), then concatenated and duration-verified as before. Simple single-track timelines keep the faster Phase 2 path.
+- Tests: moving-car detection/tracking/mask fixture, scene-change shots, cache invalidation, analysis cancellation + API flow; keyframe evaluation, effect validation/CRUD/presets/reorder/persistence/undo, v2→v3 migration, and pixel-verified renders (brightness change, glow spread, two-track compositing, opacity blending). A keyframe range-validation bug found by these tests was fixed.
+
+### Not included
+
+- Semantic ML object classification, transitions, text, AI chat (Phase 5), training/self-improvement (Phase 6), Windows installer (Phase 7), and any Phase 8 audit work.
+
+### Verification note
+
+56 automated tests pass in the Linux dev environment plus a live end-to-end smoke test (analyze moving-car video → 1 track, displacement 0.70; compositing render with fade-in preset + keyframed glow verified at 3.04s). Windows-laptop verification remains pending — see `docs/TESTING.md`.
+
 ## [0.2.0] — 2026-10-24 — Phase 2: Editing Core
 
 ### Added

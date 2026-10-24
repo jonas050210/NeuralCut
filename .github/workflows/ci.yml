@@ -46,8 +46,26 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Run tests (core, projects, jobs, API)
+        run: python -m pytest -q neuralcut/tests/test_config_logging.py neuralcut/tests/test_projects.py neuralcut/tests/test_jobs.py neuralcut/tests/test_api.py neuralcut/tests/test_main.py neuralcut/tests/test_integration_adapters.py
+
+      - name: Run tests (editing and rendering)
+        run: python -m pytest -q neuralcut/tests/test_editing.py neuralcut/tests/test_rendering.py
+
+      - name: Run tests (intelligence)
+        run: python -m pytest -q neuralcut/tests/test_intelligence.py
+
+      - name: Run tests (effects logic)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "keyframe_evaluation or validation or crud or migrates or via_api"
+
+      - name: Run tests (effects render - color)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "color_effect"
+
+      - name: Run tests (effects render - glow/bloom)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "glow_and_bloom"
+
+      - name: Run tests (effects render - compositing)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "compositing"
 
       - name: Check frontend JavaScript syntax
         run: node --check neuralcut/frontend/assets/app.js

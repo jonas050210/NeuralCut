@@ -158,7 +158,7 @@ def test_timeline_persistence_roundtrip(
     container.project_service.save()
 
     loaded = ProjectStore.load(path)
-    assert loaded.version == 2
+    assert loaded.version == 3
     assert len(loaded.clips) == 1
     saved_clip = loaded.clips[0]
     assert saved_clip.name == "Intro"

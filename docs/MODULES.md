@@ -100,6 +100,21 @@ Job functions must poll `cancel_event`, validate payload values, and avoid mutat
 - `register_render_jobs()`: binds the `render` job type to the container.
 - Raises `RenderError`/`RenderCancelled` (job failures surface these messages).
 
+### `neuralcut/backend/intelligence/` (Phase 3)
+
+- `analysis.py` — `AnalysisService` (shots, motion, embeddings/captions, speech, optional ASR), `AnalysisStore` (fingerprinted sidecar JSON), `register_analysis_jobs()`.
+- `detection.py` — pure-Python motion detection/tracking and RLE mask codec; detector-agnostic track representation.
+- Rules: analysis never mutates the timeline; artifacts are derived/regenerable; no fabricated transcripts or semantic labels.
+
+### `neuralcut/backend/effects/engine.py` (Phase 4)
+
+- The effect registry: types, parameter specs, presets, validation, keyframe evaluation, and FFmpeg filter mapping.
+- Add an effect here first; service/API/UI/preview/renderer pick it up from the registry. `transform` is compositing-time only.
+
+### `neuralcut/backend/api/v1/intelligence.py` (Phases 3–4)
+
+- Analysis submit/status/artifacts/search endpoints and effect/keyframe endpoints. All mutations delegate to `TimelineService`.
+
 ### `neuralcut/backend/api/v1/projects.py`
 
 - Project create/open/current/save/close and recent list endpoints.

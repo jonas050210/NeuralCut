@@ -1,4 +1,4 @@
-"""Project data model and versioning (schema v2 — Phase 2 editing core).
+"""Project data model and versioning (schema v3 — Phases 2–4).
 
 Project files are JSON with an explicit schema version. Loading validates the
 version, migrates older raw documents, and only then validates with Pydantic;
@@ -9,6 +9,9 @@ Schema history:
 - v2 (Phase 2): timeline clips with ``timeline_start_seconds``,
   ``source_start_seconds``/``source_end_seconds``, names, and probed asset
   metadata (dimensions, fps, audio presence, codec).
+- v3 (Phase 4): clips carry ordered ``effects`` (ClipEffect) with keyframed
+  properties. Analysis artifacts (Phase 3) are derived data and live in a
+  sidecar store, not in the project document.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: Current on-disk schema version.
-PROJECT_SCHEMA_VERSION = 2
+PROJECT_SCHEMA_VERSION = 3
 
 _VALID_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -54,6 +57,41 @@ class ProjectAsset(BaseModel):
         return _validate_id(value)
 
 
+class EffectKeyframe(BaseModel):
+    """One keyframe for an effect property (clip-local time)."""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    time_seconds: float = Field(ge=0)
+    value: float
+    interpolation: str = Field(default="linear", pattern=r"^(linear|hold)$")
+
+
+class ClipEffect(BaseModel):
+    """An ordered effect instance on a clip (Phase 4).
+
+    ``params`` holds base values; ``keyframes`` maps a parameter name to its
+    keyframe list. Effective value at clip-local time t: keyframe evaluation
+    when keyframes exist for that parameter, else the base param. Parameter
+    names/ranges are validated against the registry in
+    ``neuralcut.backend.effects.engine`` at the service layer (the registry
+    is the single source of truth for renderable effects).
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: str
+    type: str = Field(min_length=1, max_length=50)
+    enabled: bool = True
+    params: dict[str, float] = Field(default_factory=dict)
+    keyframes: dict[str, list[EffectKeyframe]] = Field(default_factory=dict)
+
+    @field_validator("id")
+    @classmethod
+    def _id(cls, value: str) -> str:
+        return _validate_id(value)
+
+
 class ProjectClip(BaseModel):
     """A clip placed on the timeline.
 
@@ -72,6 +110,7 @@ class ProjectClip(BaseModel):
     timeline_start_seconds: float = Field(default=0.0, ge=0)
     source_start_seconds: float = Field(default=0.0, ge=0)
     source_end_seconds: float = Field(gt=0)
+    effects: list[ClipEffect] = Field(default_factory=list)
 
     @field_validator("id")
     @classmethod
@@ -109,7 +148,7 @@ class ExportSettings(BaseModel):
 
 
 class Project(BaseModel):
-    """Top-level project document (schema v2)."""
+    """Top-level project document (schema v3)."""
 
     model_config = ConfigDict(validate_assignment=True)
 
@@ -143,6 +182,9 @@ class Project(BaseModel):
         for clip in self.clips:
             if clip.asset_id not in known:
                 raise ValueError(f"clip {clip.id} references unknown asset {clip.asset_id}")
+            effect_ids = [e.id for e in clip.effects]
+            if len(effect_ids) != len(set(effect_ids)):
+                raise ValueError(f"duplicate effect ids on clip {clip.id}")
         # Clips on the same track must not overlap (gaps are allowed).
         by_track: dict[int, list[ProjectClip]] = {}
         for clip in self.clips:
@@ -215,6 +257,20 @@ def _migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
     data["clips"] = clips
     data.setdefault("export_settings", {})
     data["version"] = 2
+    return data
+
+
+@register_migration(2, 3)
+def _migrate_v2_to_v3(data: dict[str, Any]) -> dict[str, Any]:
+    """v3 adds an (empty) ordered effects list to every clip."""
+    data = dict(data)
+    clips = []
+    for raw_clip in data.get("clips", []):
+        clip = dict(raw_clip)
+        clip.setdefault("effects", [])
+        clips.append(clip)
+    data["clips"] = clips
+    data["version"] = 3
     return data
 
 
