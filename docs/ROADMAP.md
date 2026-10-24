@@ -4,7 +4,7 @@ NeuralCut is developed in explicit phases. **Do not begin a later phase automati
 
 ## Phase 1 — Foundation
 
-**Status:** implemented in this repository; Windows/Tauri verification still required on a Windows machine.
+**Status:** implemented and merged (PR #1); Windows/Tauri verification still required on a Windows machine.
 
 ### Scope
 
@@ -40,7 +40,7 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ## Phase 2 — Editing Core
 
-**Status:** not started.
+**Status:** implemented (schema v2, timeline service + UI, undo/redo, FFmpeg export, automated tests with generated videos, live smoke test passed). Remaining: verification on a physical Windows laptop (PowerShell setup, ffmpeg install path, browser flow).
 
 ### Scope
 
@@ -53,14 +53,14 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ### Acceptance criteria
 
-- [ ] A user can import supported local media and see accurate asset metadata.
-- [ ] A user can build a multi-clip timeline, save/reopen it, and get identical project state.
-- [ ] Core clip operations are deterministic, validated, and covered by unit/API/UI tests.
-- [ ] Undo/redo restores exact prior timeline states for supported operations.
-- [ ] A timeline can be rendered/exported to a playable file with correct duration, ordering, and A/V sync on fixture media.
-- [ ] Rendering runs as a cancellable background job with progress and actionable errors.
-- [ ] The core works on a Windows laptop without an NVIDIA GPU.
-- [ ] Documentation and known codec/license limitations are updated.
+- [x] A user can import supported local media and see accurate asset metadata. (ffprobe JSON, ffmpeg fallback; tested with generated videos)
+- [x] A user can build a multi-clip timeline, save/reopen it, and get identical project state. (persistence roundtrip test)
+- [x] Core clip operations are deterministic, validated, and covered by unit/API tests. (UI is exercised by live smoke test, not automated browser tests)
+- [x] Undo/redo restores exact prior timeline states for supported operations. (snapshot history; exact-state test)
+- [x] A timeline can be rendered/exported to a playable file with correct duration, ordering, and A/V sync on fixture media. (duration verified by probe; sync verified only structurally — same trim applied to A/V — not by perceptual sync test)
+- [x] Rendering runs as a cancellable background job with progress and actionable errors. (subprocess is terminated on cancel)
+- [ ] The core works on a Windows laptop without an NVIDIA GPU. (No GPU is used by design; GitHub Windows runners run the suite, but a physical-laptop run is still pending)
+- [x] Documentation and known codec/license limitations are updated. (MP4/H.264+AAC only; see KNOWN_ISSUES)
 
 ## Phase 3 — Video Intelligence
 

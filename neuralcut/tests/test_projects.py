@@ -10,7 +10,7 @@ from neuralcut.backend.projects import model as project_model
 from neuralcut.backend.projects.model import (
     Project,
     ProjectClip,
-    migrate,
+    migrate_data,
     register_migration,
 )
 from neuralcut.backend.projects.service import ProjectService
@@ -27,7 +27,7 @@ def test_project_roundtrip(tmp_path: Path) -> None:
 
     assert loaded.id == "proj-1"
     assert loaded.name == "Roundtrip"
-    assert loaded.version == 1
+    assert loaded.version == 2
     assert saved.exists()
 
 
@@ -60,22 +60,50 @@ def test_project_store_rejects_invalid_json_and_newer_version(tmp_path: Path) ->
     assert "newer than supported" in exc.value.message
 
 
+def test_v1_project_migrates_to_v2_with_sequential_clips(tmp_path: Path) -> None:
+    v1 = {
+        "version": 1,
+        "id": "p1",
+        "name": "Old Project",
+        "assets": [
+            {"id": "a1", "name": "clip.mp4", "path": "/tmp/clip.mp4", "duration_seconds": 10.0}
+        ],
+        "clips": [
+            {"id": "c1", "asset_id": "a1", "track": 0, "start_seconds": 1.0, "end_seconds": 4.0},
+            {"id": "c2", "asset_id": "a1", "track": 0, "start_seconds": 5.0, "end_seconds": 9.0},
+        ],
+    }
+    path = tmp_path / "old.neuralcut"
+    path.write_text(json.dumps(v1), encoding="utf-8")
+
+    loaded = ProjectStore.load(path)
+
+    assert loaded.version == 2
+    assert loaded.clips[0].timeline_start_seconds == 0.0
+    assert loaded.clips[0].source_start_seconds == 1.0
+    assert loaded.clips[0].duration_seconds == 3.0
+    assert loaded.clips[1].timeline_start_seconds == 3.0
+    assert loaded.timeline_duration_seconds == 7.0
+
+
 def test_migration_registry_applies_in_order() -> None:
-    original = dict(project_model.MIGRATIONS)
+    original = dict(project_model.RAW_MIGRATIONS)
     try:
-        project_model.MIGRATIONS.clear()
+        project_model.RAW_MIGRATIONS.clear()
 
         @register_migration(1, 2)
-        def to_v2(project: Project) -> Project:
-            project.metadata["migrated"] = True
-            return project
+        def to_v2(data: dict) -> dict:
+            data = dict(data)
+            data["metadata"] = {"migrated": True}
+            data["version"] = 2
+            return data
 
-        migrated = migrate(Project(id="p1", name="Migrate"), target_version=2)
-        assert migrated.version == 2
-        assert migrated.metadata["migrated"] is True
+        migrated = migrate_data({"id": "p1", "name": "Migrate", "version": 1}, target_version=2)
+        assert migrated["version"] == 2
+        assert migrated["metadata"]["migrated"] is True
     finally:
-        project_model.MIGRATIONS.clear()
-        project_model.MIGRATIONS.update(original)
+        project_model.RAW_MIGRATIONS.clear()
+        project_model.RAW_MIGRATIONS.update(original)
 
 
 def test_project_service_create_open_save_recent(tmp_path: Path) -> None:

@@ -4,7 +4,28 @@ All significant changes to NeuralCut are recorded here.
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+- Nothing yet.
+
+## [0.2.0] — 2026-10-24 — Phase 2: Editing Core
+
+### Added
+
+- Project schema v2 with raw-dict migration from v1 (sequential per-track placement, source-range preservation); new `docs/DATA_MODELS.md`.
+- Media import/probing via ffprobe (JSON) with an ffmpeg-output fallback, including the optional `imageio-ffmpeg` binary; probed metadata stored on assets.
+- `TimelineService`: add/move/trim/split/remove clips and remove assets, with same-track overlap, source-range, unknown-id, and missing-media validation; every edit is one validated, atomic state transition.
+- Snapshot-based undo/redo (max 100 states) for all editing operations.
+- FFmpeg render engine: timeline-order segments, gap segments, silence for audio-less clips, concat-demuxer assembly, progress, subprocess-terminating cancellation, and output existence/duration verification. Registered as the `render` background job with a typed `/projects/current/render` endpoint that snapshots the project at submission.
+- HTTP Range streaming of source media (`/api/v1/media/assets/{id}/content`) for seekable preview.
+- Timeline UI: import, asset list with probed metadata/missing markers, drag-to-move and click-to-select clips, numeric move/trim/split/remove editor, undo/redo, save, source vs. edited preview players, and export form with live job progress.
+- Tests: timeline operations, exact undo/redo restoration, v1→v2 migration, persistence roundtrip, real probing, rendering (duration/probe verification, missing-media and cancellation errors), and editing/render API flows — using short ffmpeg-generated videos.
+
+### Not included
+
+- Effects/transitions/compositing, object tracking, AI chat, model inference/training, self-improvement, Windows installer.
+
+### Verification note
+
+Automated suite (42 tests) and a live end-to-end smoke test (import → add → split → undo → save → render job → probe-verified 2.02s MP4) passed in the Linux development environment using an ffmpeg 7.0.2 binary. Windows-laptop verification (PowerShell scripts, ffmpeg installation, interactive browser flow, Tauri) is still pending — see `docs/TESTING.md`.
 
 ## [0.1.0] — 2026-10-24 — Phase 1: Foundation
 

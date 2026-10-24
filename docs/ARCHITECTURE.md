@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the implemented Phase 1 architecture and the boundaries reserved for later phases.
+This document describes the implemented Phase 1 foundation plus Phase 2 editing core, and the boundaries reserved for later phases.
 
 ## High-level shape
 
@@ -16,12 +16,13 @@ This document describes the implemented Phase 1 architecture and the boundaries 
 │                                                                  │
 │  API routes ─► Container ─► ProjectService ─► ProjectStore       │
 │                    │              │                              │
-│                    │              └────────► .neuralcut JSON     │
-│                    │                                             │
+│                    │              └────────► .neuralcut JSON (v2)│
+│                    ├────────► TimelineService (edits, undo/redo) │
 │                    ├────────► JobManager ─► worker threads       │
+│                    │              └─ render job ─► FFmpeg engine │
+│                    ├────────► MediaProcessorAdapter (ffprobe)    │
 │                    ├────────► structured logging                 │
-│                    └────────► integration adapters (planned)     │
-│                               media / models / GPU / eval / SI   │
+│                    └────────► AI adapters (planned, unavailable) │
 └──────────────────────────────────────────────────────────────────┘
 
 App data: config.json, logs/neuralcut.log, recent project paths
@@ -70,7 +71,7 @@ Responsibilities:
 
 ### API layer — `neuralcut/backend/api/`
 
-Routes are synchronous FastAPI handlers because Phase 1 operations are local, short, and thread-safe at the service boundary. Long work belongs in `JobManager`, not request handlers.
+Routes are synchronous FastAPI handlers because editing operations are local, short, and thread-safe at the service boundary. Long work (rendering) belongs in `JobManager`, not request handlers.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -88,6 +89,16 @@ Routes are synchronous FastAPI handlers because Phase 1 operations are local, sh
 | `POST` | `/api/v1/jobs` | Submit a registered job type |
 | `GET` | `/api/v1/jobs/{job_id}` | Job status/result/error |
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | Request cooperative cancellation |
+| `GET` | `/api/v1/projects/current/timeline` | Assets, clips (with derived durations), export settings, undo state |
+| `POST` | `/api/v1/projects/current/assets/import` | Probe a local file and add it as an asset |
+| `DELETE` | `/api/v1/projects/current/assets/{asset_id}` | Remove an unused asset reference |
+| `POST` | `/api/v1/projects/current/clips` | Add a clip (appends to the track end by default) |
+| `PATCH` | `/api/v1/projects/current/clips/{clip_id}` | Move and/or trim (and rename) a clip |
+| `POST` | `/api/v1/projects/current/clips/{clip_id}/split` | Split at a timeline time |
+| `DELETE` | `/api/v1/projects/current/clips/{clip_id}` | Remove a clip |
+| `POST` | `/api/v1/projects/current/undo` / `/redo` | Restore prior/next timeline state |
+| `POST` | `/api/v1/projects/current/render` | Snapshot the project and submit a `render` job |
+| `GET` | `/api/v1/media/assets/{asset_id}/content` | Stream a source file with HTTP Range support (preview/seeking) |
 
 FastAPI's generated OpenAPI UI remains available at `/docs` when the server is running.
 
@@ -137,12 +148,12 @@ The `/api/v1/logs` endpoint reads the bounded rotating log file and returns the 
 
 #### Model
 
-`Project` schema version is currently `1`. A project contains:
+`Project` schema version is currently `2` (see `DATA_MODELS.md`). A project contains:
 
 - `id`, `name`, creation/modification timestamps.
-- Asset references (`ProjectAsset`).
-- Clip references (`ProjectClip`) as data-model placeholders only—not a timeline implementation.
-- Free-form `settings` and `metadata` dictionaries.
+- Asset references (`ProjectAsset`) with probed metadata (duration, dimensions, fps, codec, audio presence).
+- Timeline clips (`ProjectClip`): track, `timeline_start_seconds`, source in/out points; the model enforces unique ids, known asset references, and no same-track overlaps.
+- `export_settings` (size/fps/quality defaults) plus free-form `settings` and `metadata` dictionaries.
 
 Pydantic validates IDs, non-empty names/paths, non-negative durations/times, and clip ranges. Assignment validation is enabled.
 
@@ -162,7 +173,7 @@ Load flow:
 4. Validate with Pydantic.
 5. Run registered migrations if the version is older.
 
-There are no migrations yet because v1 is the first schema.
+Version < 2 documents are migrated on the raw JSON dict before validation (v1→v2 places clips sequentially per track, preserving source ranges). Future versions are still rejected before migration.
 
 #### Service
 
@@ -200,7 +211,7 @@ There is no build step in Phase 1. This reduces setup friction; a component fram
 
 | Adapter | Phase 1 behavior | Future responsibility |
 |---|---|---|
-| `MediaProcessorAdapter` | Reports unavailable; detects optional ffmpeg/ffprobe paths | Import, probe, proxy, analysis handoff, render/export |
+| `MediaProcessorAdapter` | **Implemented (Phase 2):** resolves ffmpeg/ffprobe and probes media (duration/size/fps/codec/audio) | Proxies, thumbnails/waveforms, analysis handoff (Phase 3) |
 | `ModelManagerAdapter` | Reports unavailable/disabled; operations raise `503` | Lazy local model load/unload/inference and routing support |
 | `GpuManagerAdapter` | Checks only whether `nvidia-smi` exists; never initializes CUDA | Device inventory, VRAM budget, scheduling/serialization |
 | `EvaluationAdapter` | Reports unavailable | Fixture suites, deterministic graders, reports |
@@ -256,3 +267,35 @@ Later phases should preserve these boundaries:
 - AI planning produces validated tool calls; a deterministic executor applies them transactionally with undo.
 - Heavy GPU work is serialized/budgeted through the GPU/model adapters and background jobs.
 - Evaluation uses deterministic graders as gates and human preference as a separate signal.
+
+## Editing core (Phase 2) — `neuralcut/backend/editing/`
+
+`TimelineService` is the only mutation path for assets/clips. Each operation
+builds a mutated project copy, validates it with the Pydantic model
+(unknown assets, source ranges beyond asset duration, same-track overlaps),
+and only then swaps it in and pushes the previous full-project snapshot onto
+the undo stack (max 100). Undo/redo swap snapshots back, guaranteeing exact
+restoration. History is memory-only and resets when a different project
+object becomes current; edits are not auto-saved.
+
+## Rendering (Phase 2) — `neuralcut/backend/rendering/`
+
+`FFmpegRenderEngine` flattens the timeline by `(timeline_start, track, id)`,
+rejects overlaps in that flattened order (no compositing yet), converts gaps
+> 0.05s into black/silent segments, renders every segment with identical
+libx264/AAC parameters (audio-less clips get generated silence), concatenates
+with the concat demuxer (stream copy), and finally probes the output: it must
+exist, be non-empty, and match the expected timeline duration within
+max(1s, 5%). Cancellation terminates the running ffmpeg subprocess.
+
+The `render` job is registered against the container and submitted through
+`POST /projects/current/render`, which snapshots the project at submission
+time — later edits do not affect a running export. Long media work never
+runs inside request handlers.
+
+## Preview (Phase 2)
+
+Source assets stream from `GET /api/v1/media/assets/{id}/content` with HTTP
+Range support, so the browser `<video>` element can seek. The edited preview
+is client-side sequential playback of source ranges and is labelled an
+approximation; the FFmpeg export is the canonical edited output.

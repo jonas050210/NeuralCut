@@ -108,3 +108,18 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   background: #0d0f13; border-top: 1px solid var(--panel-border);
   padding: 8px 16px; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);
 }
+/* Phase 2 timeline */
+.preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .preview-grid { grid-template-columns: 1fr; } }
+.preview-grid video { width: 100%; background: #000; border-radius: 6px; aspect-ratio: 16/9; }
+.asset-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--panel-border); font-size: 13px; flex-wrap: wrap; }
+.asset-row .muted { display: block; }
+.asset-row .missing, .clip.missing { color: var(--danger); font-weight: 700; }
+.track-label { color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+.track { position: relative; height: 44px; background: #0d0f13; border: 1px solid var(--panel-border); border-radius: 6px; overflow: hidden; }
+.clip { position: absolute; top: 4px; height: 36px; min-width: 40px; padding: 4px 6px; box-sizing: border-box;
+  background: #1d3a5f; border: 1px solid var(--accent); border-radius: 4px; color: var(--text);
+  font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: grab; touch-action: none; }
+.clip.selected { background: #2a5a94; border-color: #fff; }
+.clip-form .controls, .asset-row .controls { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+select { background: #0d0f13; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text); padding: 6px; width: 100%; }

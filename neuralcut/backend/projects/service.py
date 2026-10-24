@@ -70,6 +70,17 @@ class ProjectService:
             raise NotFoundError("no project is open")
         return self._project
 
+    def replace_current(self, project: Project) -> Project:
+        """Swap the in-memory current project (used by undo/redo restore)."""
+        if self._project is None:
+            raise NotFoundError("no project is open")
+        self._project = project
+        return project
+
+    @property
+    def has_current(self) -> bool:
+        return self._project is not None
+
     def current_path(self) -> Path | None:
         return self._path
 

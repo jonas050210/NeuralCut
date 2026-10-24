@@ -135,12 +135,13 @@ function showView(id) {
   if (id === "settings") void loadConfig();
   if (id === "logs") void loadLogs();
   if (id === "project") void loadCurrentProject();
+  if (id === "timeline") void loadTimeline();
   if (id === "projects") void loadRecent();
 }
 
 function nav() {
   const hash = (window.location.hash || "#dashboard").replace("#", "");
-  const valid = ["dashboard", "projects", "project", "jobs", "settings", "logs"];
+  const valid = ["dashboard", "projects", "project", "timeline", "jobs", "settings", "logs"];
   showView(valid.includes(hash) ? hash : "dashboard");
 }
 
@@ -565,7 +566,361 @@ async function boot() {
     if (button) void cancelJob(button.dataset.cancelJob);
   });
 
+
+  /* ----- Phase 2 timeline wiring ----- */
+  $el("form-import")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await timelineCall("/projects/current/assets/import", {
+        method: "POST", body: { path: fd.get("path") },
+      });
+      msg("timeline-msg", "Media imported and probed.", "ok");
+      e.target.reset();
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+
+  $el("asset-list")?.addEventListener("click", async (e) => {
+    const add = e.target.closest("[data-add-clip]");
+    const remove = e.target.closest("[data-remove-asset]");
+    try {
+      if (add) {
+        const data = await timelineCall("/projects/current/clips", {
+          method: "POST", body: { asset_id: add.dataset.addClip },
+        });
+        selectedClipId = data.clip.id;
+        renderTimeline();
+        msg("timeline-msg", "Clip added at the end of track 0.", "ok");
+      }
+      if (remove) {
+        await timelineCall(`/projects/current/assets/${encodeURIComponent(remove.dataset.removeAsset)}`, { method: "DELETE" });
+        msg("timeline-msg", "Asset removed from project (source file untouched).", "ok");
+      }
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+
+  $el("sel-source-asset")?.addEventListener("change", updateSourcePreview);
+
+  const tracksEl = $el("timeline-tracks");
+  tracksEl?.addEventListener("click", (e) => {
+    const clipEl = e.target.closest("[data-clip]");
+    if (clipEl) { selectedClipId = clipEl.dataset.clip; renderClipEditor();
+      document.querySelectorAll(".clip").forEach((el) => el.classList.toggle("selected", el.dataset.clip === selectedClipId)); }
+  });
+
+  // Drag clips horizontally to move them.
+  let drag = null;
+  tracksEl?.addEventListener("pointerdown", (e) => {
+    const clipEl = e.target.closest("[data-clip]");
+    if (!clipEl || !timelineState) return;
+    const track = clipEl.parentElement;
+    drag = { clipEl, track, startX: e.clientX, moved: false };
+    clipEl.setPointerCapture?.(e.pointerId);
+  });
+  tracksEl?.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.startX;
+    if (Math.abs(dx) > 3) drag.moved = true;
+    if (drag.moved) drag.clipEl.style.transform = `translateX(${dx}px)`;
+  });
+  tracksEl?.addEventListener("pointerup", async (e) => {
+    if (!drag) return;
+    const { clipEl, track, startX, moved } = drag;
+    drag = null;
+    clipEl.style.transform = "";
+    if (!moved || !timelineState) return;
+    const clip = timelineState.clips.find((c) => c.id === clipEl.dataset.clip);
+    if (!clip) return;
+    const width = track.getBoundingClientRect().width || 1;
+    const duration = Math.max(timelineState.duration_seconds, 1);
+    const deltaSeconds = ((e.clientX - startX) / width) * duration;
+    const newStart = Math.max(0, Math.round((clip.timeline_start_seconds + deltaSeconds) * 10) / 10);
+    try {
+      await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}`, {
+        method: "PATCH", body: { timeline_start_seconds: newStart },
+      });
+      msg("timeline-msg", `Moved clip to ${newStart.toFixed(1)}s.`, "ok");
+    } catch (err) { msg("timeline-msg", err.message, "err"); renderTimeline(); }
+  });
+
+  $el("btn-undo")?.addEventListener("click", async () => {
+    try { await timelineCall("/projects/current/undo", { method: "POST" }); msg("timeline-msg", "Undone.", "ok"); }
+    catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+  $el("btn-redo")?.addEventListener("click", async () => {
+    try { await timelineCall("/projects/current/redo", { method: "POST" }); msg("timeline-msg", "Redone.", "ok"); }
+    catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+  $el("btn-save-timeline")?.addEventListener("click", async () => {
+    try {
+      const saved = await apiJson("/projects/save", { method: "POST" });
+      msg("timeline-msg", `Saved to ${saved.path}`, "ok");
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+
+  $el("btn-edited-play")?.addEventListener("click", () => {
+    if (editedPlayback.playing) { stopEditedPlayback(); return; }
+    const seek = parseFloat($el("edited-seek").value || "0");
+    playEditedFrom(Number.isFinite(seek) ? seek : 0);
+  });
+  $el("edited-video")?.addEventListener("timeupdate", editedTimeUpdate);
+  $el("edited-video")?.addEventListener("pause", () => {
+    if (editedPlayback.playing && $el("edited-video").ended) stopEditedPlayback();
+  });
+  $el("edited-seek")?.addEventListener("input", (e) => {
+    const time = parseFloat(e.target.value || "0");
+    setText("edited-time", `${time.toFixed(1)}s / ${fmtTime(timelineState?.duration_seconds || 0)}`);
+    if (editedPlayback.playing) playEditedFrom(time);
+  });
+
+  $el("form-export")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const data = await apiJson("/projects/current/render", {
+        method: "POST",
+        body: {
+          output_path: fd.get("output_path"),
+          width: parseInt(fd.get("width"), 10),
+          height: parseInt(fd.get("height"), 10),
+          fps: parseFloat(fd.get("fps")),
+        },
+      });
+      const jobId = data.job.id;
+      setHtml("export-job", `<p class="muted">Export job ${escapeHtml(jobId)} queued…</p>`);
+      msg("timeline-msg", "Export started as a background job (see Background Jobs).", "ok");
+      const timer = setInterval(async () => {
+        try {
+          const job = await apiJson(`/jobs/${encodeURIComponent(jobId)}`);
+          setHtml("export-job", `<div>${renderJob(job)}</div>`);
+          if (["completed", "failed", "cancelled"].includes(job.status)) clearInterval(timer);
+        } catch (_) { clearInterval(timer); }
+      }, 1000);
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+
   setText("api-url", API_BASE || window.location.origin);
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+/* ---------- timeline / editing (Phase 2) ---------- */
+
+let timelineState = null;
+let selectedClipId = null;
+let editedPlayback = { playing: false, raf: null };
+
+function fmtTime(v) {
+  return `${Number(v || 0).toFixed(2)}s`;
+}
+
+function sortedTimelineClips() {
+  if (!timelineState) return [];
+  return [...timelineState.clips].sort(
+    (a, b) => a.timeline_start_seconds - b.timeline_start_seconds || a.track - b.track
+  );
+}
+
+async function timelineCall(path, opts = {}) {
+  const data = await apiJson(path, opts);
+  if (data.timeline) {
+    timelineState = data.timeline;
+    renderTimeline();
+  }
+  return data;
+}
+
+async function loadTimeline() {
+  try {
+    timelineState = await apiJson("/projects/current/timeline");
+    renderTimeline();
+    msg("timeline-msg", "", "");
+  } catch (err) {
+    timelineState = null;
+    msg("timeline-msg", `No project open or timeline unavailable: ${err.message}`, "err");
+    setHtml("asset-list", '<div class="list empty">Open or create a project first (Projects view).</div>');
+    setHtml("timeline-tracks", "");
+    setHtml("clip-editor", "");
+  }
+}
+
+function renderTimeline() {
+  if (!timelineState) return;
+  setText("timeline-duration", `— duration ${fmtTime(timelineState.duration_seconds)}`);
+  $el("btn-undo").disabled = !timelineState.history.can_undo;
+  $el("btn-redo").disabled = !timelineState.history.can_redo;
+
+  // Assets
+  const assets = timelineState.assets;
+  if (!assets.length) {
+    setHtml("asset-list", '<div class="list empty">No media imported yet.</div>');
+  } else {
+    setHtml("asset-list", assets.map((a) => `
+      <div class="asset-row">
+        <div>
+          <strong>${escapeHtml(a.name)}</strong>
+          <span class="muted">${escapeHtml(a.path)}</span>
+          <span class="muted">${a.width && a.height ? `${a.width}×${a.height}` : "unknown size"} · ${fmtTime(a.duration_seconds)} · ${a.codec || "unknown codec"}${a.has_audio ? " · audio" : " · no audio"}</span>
+          ${a.missing ? '<span class="missing">SOURCE FILE MISSING</span>' : ""}
+        </div>
+        <div class="controls">
+          <button class="btn" data-add-clip="${escapeHtml(a.id)}" ${a.missing ? "disabled" : ""}>Add to timeline</button>
+          <button class="btn" data-remove-asset="${escapeHtml(a.id)}">Remove</button>
+        </div>
+      </div>`).join(""));
+  }
+  const sel = $el("sel-source-asset");
+  const previous = sel.value;
+  sel.innerHTML = assets.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("");
+  if (assets.some((a) => a.id === previous)) sel.value = previous;
+  updateSourcePreview();
+
+  // Tracks
+  const duration = Math.max(timelineState.duration_seconds, 1);
+  const tracks = new Map();
+  for (const clip of timelineState.clips) {
+    if (!tracks.has(clip.track)) tracks.set(clip.track, []);
+    tracks.get(clip.track).push(clip);
+  }
+  if (!tracks.size) tracks.set(0, []);
+  setHtml("timeline-tracks", [...tracks.entries()].sort((a, b) => a[0] - b[0]).map(([track, clips]) => `
+    <div class="track-label">Track ${track}</div>
+    <div class="track" data-track="${track}">
+      ${clips.map((clip) => {
+        const left = (clip.timeline_start_seconds / duration) * 100;
+        const width = Math.max((clip.duration_seconds / duration) * 100, 2);
+        return `<div class="clip ${clip.id === selectedClipId ? "selected" : ""} ${clip.asset_missing ? "missing" : ""}"
+          data-clip="${escapeHtml(clip.id)}" style="left:${left}%;width:${width}%"
+          title="${escapeHtml(clip.name)}">${escapeHtml(clip.name)} · ${fmtTime(clip.duration_seconds)}</div>`;
+      }).join("")}
+    </div>`).join(""));
+
+  // Seek range mirrors the edited preview
+  const seek = $el("edited-seek");
+  seek.max = String(Math.max(timelineState.duration_seconds, 0.1));
+  setText("edited-time", `0.0s / ${fmtTime(timelineState.duration_seconds)}`);
+
+  renderClipEditor();
+}
+
+function renderClipEditor() {
+  const box = $el("clip-editor");
+  if (!timelineState) { box.innerHTML = ""; return; }
+  const clip = timelineState.clips.find((c) => c.id === selectedClipId);
+  if (!clip) {
+    box.innerHTML = '<p class="muted">Select a clip on the timeline to move, trim, split, or remove it.</p>';
+    return;
+  }
+  box.innerHTML = `
+    <form id="form-clip-edit" class="clip-form">
+      <h4>${escapeHtml(clip.name)}</h4>
+      <div class="field"><label>Timeline start (s)</label><input type="number" step="0.1" min="0" name="timeline_start_seconds" value="${clip.timeline_start_seconds}"></div>
+      <div class="field"><label>Track</label><input type="number" step="1" min="0" name="track" value="${clip.track}"></div>
+      <div class="field"><label>Source in (s)</label><input type="number" step="0.1" min="0" name="source_start_seconds" value="${clip.source_start_seconds}"></div>
+      <div class="field"><label>Source out (s)</label><input type="number" step="0.1" min="0" name="source_end_seconds" value="${clip.source_end_seconds}"></div>
+      <div class="field"><label>Split at timeline time (s)</label><input type="number" step="0.1" min="0" name="split_at" value="${(clip.timeline_start_seconds + clip.duration_seconds / 2).toFixed(2)}"></div>
+      <div class="controls">
+        <button class="btn" type="submit">Apply move/trim</button>
+        <button class="btn" type="button" id="btn-split-clip">Split</button>
+        <button class="btn" type="button" id="btn-remove-clip" style="color:var(--danger)">Remove clip</button>
+      </div>
+    </form>`;
+  $el("form-clip-edit").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}`, {
+        method: "PATCH",
+        body: {
+          timeline_start_seconds: parseFloat(fd.get("timeline_start_seconds")),
+          track: parseInt(fd.get("track"), 10),
+          source_start_seconds: parseFloat(fd.get("source_start_seconds")),
+          source_end_seconds: parseFloat(fd.get("source_end_seconds")),
+        },
+      });
+      msg("timeline-msg", "Clip updated.", "ok");
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+  $el("btn-split-clip").addEventListener("click", async () => {
+    const fd = new FormData($el("form-clip-edit"));
+    try {
+      await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/split`, {
+        method: "POST", body: { at_timeline_seconds: parseFloat(fd.get("split_at")) },
+      });
+      msg("timeline-msg", "Clip split.", "ok");
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+  $el("btn-remove-clip").addEventListener("click", async () => {
+    try {
+      selectedClipId = null;
+      await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}`, { method: "DELETE" });
+      msg("timeline-msg", "Clip removed.", "ok");
+    } catch (err) { msg("timeline-msg", err.message, "err"); }
+  });
+}
+
+function updateSourcePreview() {
+  const sel = $el("sel-source-asset");
+  const video = $el("source-video");
+  if (!sel || !video) return;
+  const assetId = sel.value;
+  if (!assetId) { video.removeAttribute("src"); return; }
+  const url = `/api/v1/media/assets/${encodeURIComponent(assetId)}/content`;
+  if (!video.src.endsWith(url)) {
+    video.src = url;
+    video.load();
+  }
+}
+
+/* Edited preview: play clips back-to-back from their source ranges. */
+function clipAtTimelineTime(time) {
+  return sortedTimelineClips().find(
+    (c) => time >= c.timeline_start_seconds && time < c.timeline_end_seconds
+  ) || null;
+}
+
+function playEditedFrom(time) {
+  const video = $el("edited-video");
+  const clip = clipAtTimelineTime(time) ||
+    sortedTimelineClips().find((c) => c.timeline_start_seconds >= time);
+  if (!clip) { editedPlayback.playing = false; setText("btn-edited-play", "▶ Play timeline"); return; }
+  editedPlayback.playing = true;
+  setText("btn-edited-play", "⏸ Pause timeline");
+  editedPlayback.clipId = clip.id;
+  const offset = Math.max(0, time - clip.timeline_start_seconds);
+  const url = `/api/v1/media/assets/${encodeURIComponent(clip.asset_id)}/content`;
+  const startPlayback = () => {
+    video.currentTime = clip.source_start_seconds + offset;
+    void video.play();
+  };
+  if (!video.src.endsWith(url)) {
+    video.src = url;
+    video.addEventListener("loadedmetadata", startPlayback, { once: true });
+    video.load();
+  } else {
+    startPlayback();
+  }
+}
+
+function stopEditedPlayback() {
+  editedPlayback.playing = false;
+  $el("edited-video").pause();
+  setText("btn-edited-play", "▶ Play timeline");
+}
+
+function editedTimeUpdate() {
+  const video = $el("edited-video");
+  if (!editedPlayback.playing || !editedPlayback.clipId || !timelineState) return;
+  const clip = timelineState.clips.find((c) => c.id === editedPlayback.clipId);
+  if (!clip) return;
+  const timelineTime = clip.timeline_start_seconds + (video.currentTime - clip.source_start_seconds);
+  $el("edited-seek").value = String(Math.min(timelineTime, timelineState.duration_seconds));
+  setText("edited-time", `${timelineTime.toFixed(1)}s / ${fmtTime(timelineState.duration_seconds)}`);
+  if (video.currentTime >= clip.source_end_seconds - 0.05 || video.ended) {
+    const next = sortedTimelineClips().find(
+      (c) => c.timeline_start_seconds >= clip.timeline_end_seconds - 1e-6 && c.id !== clip.id
+    );
+    if (next) playEditedFrom(next.timeline_start_seconds);
+    else stopEditedPlayback();
+  }
+}

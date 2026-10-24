@@ -4,14 +4,14 @@ Welcome to NeuralCut. Read this file before changing code.
 
 ## Project state
 
-NeuralCut is a local-first AI video editor for Windows. The repository currently implements **Phase 1: Foundation** only:
+NeuralCut is a local-first AI video editor for Windows. The repository currently implements **Phase 1: Foundation** and **Phase 2: Editing Core**:
 
 - Python/FastAPI backend.
 - Vanilla JavaScript frontend served by the backend.
 - Tauri 2 shell skeleton (not yet compiled/verified).
 - Validated config, JSON project persistence, background jobs, logging, diagnostics, and tests.
 
-Do **not** start Phase 2 or later work unless the project owner explicitly requests that phase. In particular, do not add a timeline, editing operations, media rendering, object tracking, AI chat/tool execution, model training, or autonomous self-improvement as incidental “improvements.”
+Do **not** start Phase 3 or later work unless the project owner explicitly requests that phase. In particular, do not add object tracking, advanced effects, AI chat/tool execution, model training, or autonomous self-improvement as incidental “improvements.” Phase 2 scope is: schema-v2 timeline, import/probe, clip operations, undo/redo, source/edited preview, and FFmpeg export via background jobs.
 
 ## Source of truth
 
@@ -28,7 +28,11 @@ Do **not** start Phase 2 or later work unless the project owner explicitly reque
 - **Backend boundary:** frontend uses same-origin relative `/api/v1/...` calls. Do not hard-code `localhost` URLs into browser code.
 - **Validation at boundaries:** use Pydantic models for HTTP/config/project data. Return `NeuralCutError` subclasses for expected application failures.
 - **No fake functionality:** extension adapters must report unavailable planned features honestly. Do not add placeholder buttons/results that pretend work happened.
-- **Single current project:** Phase 1 `ProjectService` intentionally tracks one open project. Preserve that contract unless a phase explicitly redesigns it.
+- **Single current project:** `ProjectService` intentionally tracks one open project. Preserve that contract unless a phase explicitly redesigns it.
+- **Editing only through `TimelineService`:** all timeline mutations must go through `neuralcut/backend/editing/service.py` so validation and undo history stay consistent. Never mutate `project.clips` from route handlers or future AI code directly.
+- **Render only through the job manager:** rendering is submitted as the `render` job type with a project snapshot; the engine must keep polling `cancel_event` and must verify output duration before reporting success.
+- **Project schema discipline:** current schema is v2. Any change bumps `PROJECT_SCHEMA_VERSION`, adds a raw-dict migration in `projects/model.py`, and adds a committed old-version load test.
+- **Media is referenced, not copied:** assets store local paths. Missing source files must surface as explicit errors/markers, never silent substitution.
 
 ## Repository map
 
@@ -43,8 +47,10 @@ neuralcut/
     app.py                  FastAPI app factory and SPA serving
     di.py                   dependency container
     api/v1/                 HTTP routes
-    projects/               model, atomic store, service
-    integration/            future media/model/GPU/eval adapters
+    projects/               schema-v2 model + migrations, atomic store, service
+    editing/                TimelineService: clip ops, validation, undo/redo
+    rendering/              FFmpeg segment+concat export engine and render job
+    integration/            media probe (real) + model/GPU/eval adapters
   frontend/                 static HTML/CSS/JS UI
   tests/                    pytest suite
 src-tauri/                  unverified Tauri 2 shell skeleton

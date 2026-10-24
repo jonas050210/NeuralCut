@@ -1,6 +1,6 @@
 # Known Issues, Limitations, and Open Questions
 
-This file distinguishes verified Phase 1 behavior from unverified or planned work.
+This file distinguishes verified behavior from unverified or planned work.
 
 ## Verification limits
 
@@ -23,11 +23,20 @@ Known packaging gaps:
 
 **Next check:** run `npm run tauri:dev` on Windows with Rust/WebView2 and fix any config/API issues in a focused change.
 
-## Phase 1 functional limitations
+## Phase 2 functional limitations
 
-### No editing or media functionality
+### Editing core limits
 
-There is no timeline, import, preview, render, export, transcription, tracking, effect, or AI command functionality. `ProjectAsset` and `ProjectClip` are schema references only.
+- Export is **MP4 (H.264/AAC) only**; no other containers/codecs, transitions, effects, text, speed changes, or keyframes.
+- **No compositing:** clips on different tracks that overlap in time are rejected at export (the timeline is flattened into one sequence). Same-track overlaps are rejected at edit time.
+- **Edited preview is approximate:** the browser plays source ranges back-to-back; seams at clip boundaries and gap timing are not frame-accurate. Only the FFmpeg export is the final output.
+- **Assets are path references, not copies.** Moving/deleting a source file marks it missing; there is no relink UI yet.
+- **Undo history is memory-only** (max 100 snapshots), resets when switching projects, and edits are not auto-saved — unsaved edits are lost if the backend exits.
+- Probing without ffprobe uses `ffmpeg -i` text parsing, which reports fewer fields (no format name) and may vary slightly by ffmpeg build.
+
+### Phase 1 limitations that remain
+
+- No transcription, tracking, effect, or AI command functionality (later phases).
 
 ### Settings UI is read-only
 
@@ -79,9 +88,9 @@ Diagnostics/config endpoints reveal data/config paths and tool locations to anyo
 
 ## Architecture risks for later phases
 
-### Timeline/render engine is undecided
+### Timeline/render engine (decided for Phase 2, revisit if needed)
 
-FFmpeg alone, MLT, GStreamer, MoviePy, or a custom preview/render split have different licensing, performance, and packaging trade-offs. Phase 2 requires prototypes before committing.
+Phase 2 chose a custom timeline model + direct FFmpeg segment/concat rendering (D-017). MLT/GStreamer/OTIO were not adopted; revisit if compositing, effects, or frame-accurate preview outgrow this design. FFmpeg's own licensing (GPL builds vs LGPL builds) must be reviewed before bundling it in a distributed installer (Phase 7).
 
 ### Real-time preview may outgrow same-origin JSON HTTP
 

@@ -1,8 +1,8 @@
 # AI Infrastructure Plan
 
-This document describes planned AI integration. **Phase 1 implements no AI models, downloads, inference, GPU initialization, or cloud calls.** It only defines configuration fields, adapter contracts, diagnostics, and background-job boundaries.
+This document describes planned AI integration. **NeuralCut (through Phase 2) implements no AI models, downloads, inference, GPU initialization, or cloud calls.** It only defines configuration fields, adapter contracts, diagnostics, and background-job boundaries.
 
-## Current Phase 1 state
+## Current state (Phases 1–2)
 
 | Piece | Current behavior |
 |---|---|
@@ -14,7 +14,7 @@ This document describes planned AI integration. **Phase 1 implements no AI model
 | `MediaProcessorAdapter` | Reports unavailable; only resolves optional ffmpeg/ffprobe paths |
 | Background jobs | Working substrate for future analysis/inference/render jobs |
 
-Setting `models.enabled=true` in Phase 1 does not enable a hidden AI feature; diagnostics will still report the model adapter as unavailable.
+Setting `models.enabled=true` does not enable a hidden AI feature; diagnostics will still report the model adapter as unavailable.
 
 ## Design principles for future AI
 
@@ -59,7 +59,9 @@ Project/timeline state ───────────────┤
 
 ## Candidate model families from research
 
-These are research directions, not Phase 1 dependencies. Re-validate versions, licenses, and benchmarks at implementation time.
+These are research directions, not current dependencies. Re-validate versions, licenses, and benchmarks at implementation time.
+
+**Phase 2 status note:** the deterministic tool surface this plan assumes now exists — `TimelineService` operations (import/add/move/trim/split/remove), snapshot undo, and the `render` job are validated, typed, and test-covered. A future Phase 5 orchestrator should call exactly these operations; no AI/model code was added in Phase 2.
 
 ### Orchestrator LLM
 

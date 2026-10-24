@@ -16,8 +16,9 @@ async def test_health_diagnostics_config(client: httpx.AsyncClient) -> None:
     diagnostics = await client.get("/api/v1/diagnostics")
     assert diagnostics.status_code == 200
     body = diagnostics.json()
-    assert body["phase"] == "1 — Foundation"
-    assert body["media"]["available"] is False
+    assert body["phase"] == "2 — Editing Core"
+    assert "ffmpeg" in body["media"]
+    assert "supported_extensions" in body["media"]
     assert body["models"]["available"] is False
     assert body["models"]["enabled"] is False
     assert "does not require an NVIDIA GPU" in body["gpu"]["note"]

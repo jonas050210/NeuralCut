@@ -15,7 +15,7 @@ from pathlib import Path
 from neuralcut.backend.projects.model import (
     PROJECT_SCHEMA_VERSION,
     Project,
-    migrate,
+    migrate_data,
 )
 from neuralcut.errors import ProjectError, ValidationError
 
@@ -82,6 +82,15 @@ class ProjectStore:
                 details={"file": str(path), "version": raw_version},
             )
 
+        if raw_version < PROJECT_SCHEMA_VERSION:
+            try:
+                data = migrate_data(data, PROJECT_SCHEMA_VERSION)
+            except ValueError as exc:
+                raise ProjectError(
+                    str(exc),
+                    details={"file": str(path), "version": raw_version},
+                ) from exc
+
         try:
             project = Project.model_validate(data)
         except Exception as exc:  # pydantic.ValidationError
@@ -89,20 +98,5 @@ class ProjectStore:
                 f"project data validation failed: {exc}",
                 details={"file": str(path)},
             ) from exc
-
-        if project.version > PROJECT_SCHEMA_VERSION:
-            raise ProjectError(
-                f"project schema version {project.version} is newer than supported "
-                f"({PROJECT_SCHEMA_VERSION}) — update NeuralCut",
-                details={"file": str(path), "version": project.version},
-            )
-        if project.version < PROJECT_SCHEMA_VERSION:
-            try:
-                project = migrate(project, PROJECT_SCHEMA_VERSION)
-            except ValueError as exc:
-                raise ProjectError(
-                    str(exc),
-                    details={"file": str(path), "version": project.version},
-                ) from exc
 
         return project

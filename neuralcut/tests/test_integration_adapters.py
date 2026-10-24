@@ -3,11 +3,10 @@ from __future__ import annotations
 import pytest
 
 from neuralcut.backend.di import Container
-from neuralcut.errors import UnavailableError
+from neuralcut.errors import UnavailableError, ValidationError
 
 
-def test_phase1_adapters_are_explicitly_unavailable(container: Container) -> None:
-    assert container.media.status()["available"] is False
+def test_ai_adapters_remain_unavailable_in_phase2(container: Container) -> None:
     assert container.models.status()["available"] is False
     assert container.evaluation.status()["available"] is False
     assert container.self_improvement.status()["available"] is False
@@ -17,10 +16,16 @@ def test_phase1_adapters_are_explicitly_unavailable(container: Container) -> Non
     assert "does not require an NVIDIA GPU" in gpu["note"]
 
 
-def test_phase1_adapter_operations_raise_unavailable(container: Container) -> None:
-    with pytest.raises(UnavailableError):
-        container.media.import_asset("clip.mp4")
+def test_media_adapter_is_real_in_phase2(container: Container) -> None:
+    status = container.media.status()
+    assert "ffmpeg" in status
+    assert ".mp4" in status["supported_extensions"]
+    # Probing a missing file is a validation error, not "unimplemented".
+    with pytest.raises(ValidationError):
+        container.media.probe("/definitely/missing/clip.mp4")
 
+
+def test_phase2_adapter_operations_raise_unavailable(container: Container) -> None:
     with pytest.raises(UnavailableError):
         container.models.load_model("model.gguf")
 
