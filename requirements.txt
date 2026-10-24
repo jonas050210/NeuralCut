@@ -1,0 +1,14 @@
+# NeuralCut runtime dependencies (pinned for reproducible setup).
+# Regenerate with:  .venv\Scripts\pip freeze > requirements.txt   (Windows)
+#                    .venv/bin/pip freeze > requirements.txt        (Linux/macOS)
+fastapi==0.162.0
+uvicorn==0.54.0
+pydantic==2.14.1
+pydantic-core==2.50.1
+pydantic-settings==2.16.1
+PyYAML==6.0.3
+
+# Development / test dependencies
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1

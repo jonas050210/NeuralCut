@@ -1,0 +1,13 @@
+{
+  "name": "neuralcut",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NeuralCut — local-first AI video editor (Phase 1 foundation)",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

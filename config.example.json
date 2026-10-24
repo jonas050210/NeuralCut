@@ -1,0 +1,32 @@
+{
+  "app_name": "NeuralCut",
+  "debug": false,
+  "host": "127.0.0.1",
+  "port": 8765,
+  "logging": {
+    "level": "INFO",
+    "json_logs": true,
+    "stdout": true,
+    "max_bytes": 5000000,
+    "backup_count": 3
+  },
+  "jobs": {
+    "max_workers": 2,
+    "max_jobs": 100,
+    "result_ttl_seconds": 86400
+  },
+  "media": {
+    "ffmpeg_path": null,
+    "probe_path": null
+  },
+  "models": {
+    "enabled": false,
+    "orchestrator_path": null,
+    "max_vram_gb": null
+  },
+  "ui": {
+    "theme": "system",
+    "default_project_dir": null
+  },
+  "recent_projects": []
+}
