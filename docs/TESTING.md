@@ -130,6 +130,7 @@ Record Windows version, Python version, commands, and failures in the PR/issue r
 - `ruff check neuralcut`: clean. `node --check` on the frontend: clean.
 - Live smoke test against the real server: create project → import generated 3s video (probed 3.0s, 320×240) → add clip → split → undo → save → submit render job → completed with expected 2.0s / probed 2.02s output; `ffmpeg -i` confirms H.264 + AAC streams. Range request returned `206` with a correct `Content-Range`.
 - The sandbox has no system ffmpeg; tests used the optional `imageio-ffmpeg` binary (ffmpeg 7.0.2) installed only into the local `.venv`. It is **not** a project dependency — end users install ffmpeg normally. On machines without any ffmpeg, render/probe tests skip instead of failing.
+- **GitHub Actions (PR #2): all four jobs passed** (Ubuntu/Windows × Python 3.11/3.12), including the rendering tests (apt ffmpeg+ffprobe on Ubuntu; imageio-ffmpeg binary — the no-ffprobe fallback path — on Windows). This run caught a real bug: ffmpeg stderr piped but not drained deadlocked the render subprocess on Windows; fixed by redirecting stderr to a temp file. Windows *runner* success still does not verify the PowerShell scripts or interactive browser flow on a physical laptop.
 
 ## Manual Phase 2 UI checklist (in addition to the Phase 1 checklist)
 
