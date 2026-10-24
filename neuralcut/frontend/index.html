@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NeuralCut — Foundation (Phase 1)</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="shell-header">
+    <div class="brand">NeuralCut<span class="phase"> · Phase 1: Foundation</span></div>
+    <div class="status-pill" id="status-pill">checking backend…</div>
+  </header>
+
+  <nav class="shell-nav">
+    <a href="#dashboard" class="nav-link" data-nav="dashboard">Dashboard</a>
+    <a href="#projects" class="nav-link" data-nav="projects">Projects</a>
+    <a href="#project" class="nav-link" data-nav="project">Current Project</a>
+    <a href="#jobs" class="nav-link" data-nav="jobs">Background Jobs</a>
+    <a href="#settings" class="nav-link" data-nav="settings">Settings</a>
+    <a href="#logs" class="nav-link" data-nav="logs">Logs</a>
+  </nav>
+
+  <main class="shell-main">
+    <!-- Dashboard -->
+    <section id="view-dashboard" class="view">
+      <h2>Dashboard</h2>
+      <div class="card">
+        <h3>System health</h3>
+        <pre id="health-out" class="code">-</pre>
+      </div>
+      <div class="card">
+        <h3>Diagnostics</h3>
+        <pre id="diagnostics-out" class="code">-</pre>
+      </div>
+      <div class="card">
+        <h3>Actions</h3>
+        <p class="muted">No cloud connection is made. AI models are optional and disabled by default.</p>
+        <button class="btn" id="btn-check-health">Re-check health</button>
+      </div>
+    </section>
+
+    <!-- Projects -->
+    <section id="view-projects" class="view">
+      <h2>Projects</h2>
+      <div class="card">
+        <h3>Create project</h3>
+        <form id="form-create">
+          <div class="field">
+            <label>Name</label>
+            <input type="text" name="name" required placeholder="My first project">
+          </div>
+          <div class="field">
+            <label>Directory</label>
+            <input type="text" name="directory" required value="">
+          </div>
+          <button class="btn" type="submit">Create</button>
+        </form>
+        <p id="create-msg" class="msg"></p>
+      </div>
+      <div class="card">
+        <h3>Open project</h3>
+        <form id="form-open">
+          <div class="field">
+            <label>Path to .neuralcut file</label>
+            <input type="text" name="path" required placeholder="/path/to/project.neuralcut">
+          </div>
+          <button class="btn" type="submit">Open</button>
+        </form>
+        <p id="open-msg" class="msg"></p>
+      </div>
+      <div class="card">
+        <h3>Recent</h3>
+        <div id="recent-list" class="list">-</div>
+      </div>
+    </section>
+
+    <!-- Current project -->
+    <section id="view-project" class="view">
+      <h2>Project <span id="project-name"></span></h2>
+      <div class="card">
+        <p class="muted">Phase 1 stores and validates projects. Timeline rendering is a Phase 2 extension point.</p>
+        <button class="btn" id="btn-refresh-project">Refresh</button>
+        <button class="btn" id="btn-save-project">Save</button>
+        <p id="project-msg" class="msg"></p>
+      </div>
+      <pre id="project-json" class="code">-</pre>
+    </section>
+
+    <!-- Jobs -->
+    <section id="view-jobs" class="view">
+      <h2>Background Jobs</h2>
+      <div class="card">
+        <h3>Submit demo job</h3>
+        <p class="muted">Cooperative cancellation, progress, and error reporting — exercised with a demo job type.</p>
+        <form id="form-job">
+          <div class="field">
+            <label>Name</label>
+            <input type="text" name="name" value="Demo job">
+          </div>
+          <div class="field">
+            <label>Steps</label>
+            <input type="number" name="steps" value="5" min="1" max="100">
+          </div>
+          <div class="field">
+            <label>Delay per step (s)</label>
+            <input type="number" name="delay" value="0.3" min="0" max="10" step="0.1">
+          </div>
+          <button class="btn" type="submit">Submit</button>
+        </form>
+        <p id="job-msg" class="msg"></p>
+      </div>
+      <div class="card">
+        <h3>Job queue</h3>
+        <div id="jobs-list" class="list">loading…</div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="view-settings" class="view">
+      <h2>Settings</h2>
+      <div class="card">
+        <h3>Configuration (validated at startup)</h3>
+        <pre id="config-out" class="code">-</pre>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section id="view-logs" class="view">
+      <h2>Log</h2>
+      <div class="card">
+        <div class="toolbar">
+          <button class="btn" id="btn-refresh-logs">Refresh</button>
+          <label class="lines-label">Lines <select id="sel-log-lines"><option>50</option><option>200</option><option>1000</option></select></label>
+        </div>
+        <pre id="logs-out" class="code">-</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell-footer">
+    <span>NeuralCut 0.1.0 · local-first · no cloud · models optional</span>
+    <span id="api-url" class="muted"></span>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

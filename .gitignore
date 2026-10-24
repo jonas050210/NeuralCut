@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+pip-log.txt
+pip-delete-this-directory.sha1
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.code-workspace
+.vscode/
+.idea/
+
+# Tauri (not built in this repo; kept clean when built locally)
+src-tauri/target/
+src-tauri/src-gen/
+src-tauri/node_modules/
+
+# NeuralCut runtime data
+data/
+*.neuralcut
+neuralcut/instance/
+
+# Logs
+logs/
+neuralcut/logs/

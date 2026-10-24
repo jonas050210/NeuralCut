@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default NeuralCut capability set. The Phase 1 frontend uses same-origin HTTP to the local Python backend and does not call Tauri commands yet.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
