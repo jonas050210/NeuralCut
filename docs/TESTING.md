@@ -132,6 +132,7 @@ Record Windows version, Python version, commands, and failures in the PR/issue r
 - Moving-car fixture: the synthetic car (red box crossing a static scene) yields one track with displacement ≈ 0.70 of frame width, ≥5 frames, correct left→right direction, and a mask covering the car's expected centre pixel.
 - Compositing/effects fixtures verify rendered pixels, not just durations: brightness raises frame mean, glow brightens pixels *outside* a bright square, a scaled red top clip covers the centre while corners stay blue, and 0.5 opacity blends measurably.
 - Live smoke test: analysis job on the car video completed (1 track, displacement 0.70); a two-track project with a `fade-in` preset and keyframed glow saved and rendered to a probe-verified 3.04s composited MP4.
+- **GitHub Actions (PR #3): all four jobs passed** (Ubuntu/Windows × Python 3.11/3.12). Ubuntu CI caught a real cross-version bug: the glow render's video stream ran to 2048s on the runner's ffmpeg 8.x (audio stayed 2.02s); composite segments are now hard-bounded (`trim`/`setpts`, `atrim`/`asetpts`, output `-t`) and the suite passes on both ffmpeg generations.
 - Not verified: ASR transcription (optional engine not installed), semantic detection (not implemented by design), physical Windows laptop performance/interactive flow.
 
 ## Recorded Phase 2 results (2026-10-24, Linux dev environment)

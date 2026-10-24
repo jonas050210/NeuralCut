@@ -35,6 +35,9 @@ Known packaging gaps:
 
 ### Effects limits (Phase 4)
 
+- **ffmpeg version sensitivity (found by CI):** with the runner's ffmpeg 8.x, framesync-based effect chains could emit runaway video stream durations (a 2s clip reported as 2048s) while audio stayed correct. Composite segments are therefore hard-bounded with `trim`/`setpts` + `atrim`/`asetpts` and an output `-t`, making segment length exact across ffmpeg builds. Prefer a current ffmpeg (7.x/8.x) and report render-duration mismatches with the ffmpeg version attached.
+### Effects limits (Phase 4)
+
 - Keyframes are evaluated once per atomic render interval (at its midpoint), so a fast ramp inside one long clip renders as steps at clip boundaries rather than a continuous ramp. The preview evaluates at the playhead, so preview/export can differ slightly on ramps.
 - No transitions, text, speed ramps, or mask-based effects (track masks are analysis data, not yet effect inputs).
 - Compositing re-encodes every interval; long multi-track projects render slower than the Phase 2 single-track path.
