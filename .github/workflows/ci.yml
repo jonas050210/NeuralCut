@@ -35,7 +35,10 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
           elif [ "$RUNNER_OS" = "Windows" ]; then
-            choco install ffmpeg -y --no-progress || echo "choco ffmpeg install failed; media tests will skip if unavailable"
+            # Fast static ffmpeg binary via pip; the media adapter and test
+            # helpers resolve it through the imageio-ffmpeg fallback (this
+            # also exercises the no-ffprobe probing path on Windows).
+            python -m pip install imageio-ffmpeg
           fi
 
       - name: Install dependencies

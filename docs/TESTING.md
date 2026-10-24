@@ -150,7 +150,7 @@ Record Windows version, Python version, commands, and failures in the PR/issue r
 - Windows latest.
 - Python 3.11 and 3.12.
 
-CI runs the full suite including editing tests; rendering/probing tests use an ffmpeg binary when the runner provides one and skip otherwise (GitHub Ubuntu/Windows runners normally include ffmpeg). CI does not yet compile Tauri/Rust or test AI features (not implemented). Windows PowerShell script execution and the interactive Phase 2 browser flow still require a physical Windows laptop run — record results in the PR.
+CI runs the full suite including editing tests: Ubuntu runners get ffmpeg+ffprobe via apt; Windows runners get a static ffmpeg binary via the `imageio-ffmpeg` pip package, which the media adapter resolves through its fallback (exercising the no-ffprobe path). Rendering/probing tests skip if no binary is available. CI does not yet compile Tauri/Rust or test AI features (not implemented). Windows PowerShell script execution and the interactive Phase 2 browser flow still require a physical Windows laptop run — record results in the PR.
 
 **Recorded Phase 1 CI result (2026-10-24):** the initial pull-request CI run passed all four jobs (Ubuntu/Windows × Python 3.11/3.12). This verifies the Python test suite and frontend syntax check on Windows runners; it does not by itself verify the PowerShell setup/run scripts, interactive browser flow, or Tauri build on a physical Windows laptop.
 
