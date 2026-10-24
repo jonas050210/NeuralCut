@@ -46,8 +46,17 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Run tests (core, projects, jobs, API)
+        run: python -m pytest -q neuralcut/tests/test_config_logging.py neuralcut/tests/test_projects.py neuralcut/tests/test_jobs.py neuralcut/tests/test_api.py neuralcut/tests/test_main.py neuralcut/tests/test_integration_adapters.py
+
+      - name: Run tests (editing and rendering)
+        run: python -m pytest -q neuralcut/tests/test_editing.py neuralcut/tests/test_rendering.py
+
+      - name: Run tests (intelligence)
+        run: python -m pytest -q neuralcut/tests/test_intelligence.py
+
+      - name: Run tests (effects)
+        run: python -m pytest -q neuralcut/tests/test_effects.py
 
       - name: Check frontend JavaScript syntax
         run: node --check neuralcut/frontend/assets/app.js
