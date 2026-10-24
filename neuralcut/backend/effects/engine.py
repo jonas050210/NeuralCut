@@ -182,28 +182,26 @@ def video_filter_chain(effects: list[ClipEffect], clip_local_t: float, label_in:
         elif effect.type in {"glow", "bloom"}:
             sigma = max(params["radius"], 0.1)
             strength = params["strength"]
-            # Screen blending must run in an RGB pixel format; older ffmpeg
-            # builds do not auto-negotiate that for blend, so force gbrp in
-            # and yuv420p back out.
+            # Glow/bloom: screen-blend a blurred copy over the source. This
+            # is implemented with overlay (a blurred RGBA copy at partial
+            # alpha) instead of the blend filter, whose framesync produces
+            # runaway durations on older ffmpeg builds (observed: a 2s clip
+            # exporting as 2048s on ffmpeg 6.x).
             if effect.type == "bloom":
                 # Threshold highlights before blurring: lift blacks to cutoff.
                 steps.append(
-                    f"{current}format=gbrp[bloom_fmt{counter}];"
-                    f"[bloom_fmt{counter}]split[bloom_src{counter}][bloom_hi{counter}];"
+                    f"{current}split[bloom_src{counter}][bloom_hi{counter}];"
                     f"[bloom_hi{counter}]eq=brightness={params['threshold'] - 1.0:.4f}"
-                    f":contrast=2,gblur=sigma={sigma:.3f}[bloom_blur{counter}];"
-                    f"[bloom_src{counter}][bloom_blur{counter}]blend=all_mode=screen"
-                    f":all_opacity={strength:.4f}[bloom_out{counter}];"
-                    f"[bloom_out{counter}]format=yuv420p{target}"
+                    f":contrast=2,gblur=sigma={sigma:.3f},format=rgba,"
+                    f"colorchannelmixer=aa={strength:.4f}[bloom_fg{counter}];"
+                    f"[bloom_src{counter}][bloom_fg{counter}]overlay=0:0{target}"
                 )
             else:
                 steps.append(
-                    f"{current}format=gbrp[glow_fmt{counter}];"
-                    f"[glow_fmt{counter}]split[glow_src{counter}][glow_hi{counter}];"
-                    f"[glow_hi{counter}]gblur=sigma={sigma:.3f}[glow_blur{counter}];"
-                    f"[glow_src{counter}][glow_blur{counter}]blend=all_mode=screen"
-                    f":all_opacity={strength:.4f}[glow_out{counter}];"
-                    f"[glow_out{counter}]format=yuv420p{target}"
+                    f"{current}split[glow_src{counter}][glow_hi{counter}];"
+                    f"[glow_hi{counter}]gblur=sigma={sigma:.3f},format=rgba,"
+                    f"colorchannelmixer=aa={strength:.4f}[glow_fg{counter}];"
+                    f"[glow_src{counter}][glow_fg{counter}]overlay=0:0{target}"
                 )
         current = target
     return ";".join(steps), current
