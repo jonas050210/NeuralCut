@@ -131,6 +131,8 @@ Record Windows version, Python version, commands, and failures in the PR/issue r
 
 CI does not yet compile Tauri/Rust or test media/AI features because those are not implemented Phase 1 systems.
 
+**Recorded Phase 1 CI result (2026-10-24):** the initial pull-request CI run passed all four jobs (Ubuntu/Windows × Python 3.11/3.12). This verifies the Python test suite and frontend syntax check on Windows runners; it does not by itself verify the PowerShell setup/run scripts, interactive browser flow, or Tauri build on a physical Windows laptop.
+
 ## Writing new tests
 
 - Use `tmp_path` for all filesystem state.

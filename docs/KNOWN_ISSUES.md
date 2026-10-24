@@ -6,7 +6,7 @@ This file distinguishes verified Phase 1 behavior from unverified or planned wor
 
 ### Windows scripts are not yet verified on Windows
 
-The foundation was implemented and tested in a Linux environment. PowerShell scripts are written for standard Windows Python layouts, and the CI workflow includes Windows runners, but a real Windows laptop run is still required before claiming Windows setup is verified.
+The foundation was implemented and tested in a Linux environment. GitHub Actions Windows runners passed the direct Python/Node test commands for Phase 1, but the PowerShell setup/run scripts and interactive browser flow still require a real Windows laptop run before claiming Windows setup is fully verified.
 
 **Next check:** follow `docs/TESTING.md` on Windows 10/11 and record results.
 

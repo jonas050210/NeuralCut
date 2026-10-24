@@ -34,6 +34,7 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 - [x] Media/model/GPU/evaluation/self-improvement adapters expose explicit planned/unavailable status.
 - [x] Automated tests pass in the development environment.
 - [x] Documentation explains architecture, development, testing, limitations, and next phases.
+- [x] GitHub Actions test jobs pass on Ubuntu and Windows runners for Python 3.11 and 3.12.
 - [ ] Windows PowerShell setup/run/test scripts are verified on a Windows laptop.
 - [ ] Tauri shell compiles and launches the backend on Windows with Rust/WebView2 installed.
 

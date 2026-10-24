@@ -29,4 +29,4 @@ All significant changes to NeuralCut are recorded here.
 
 ### Verification note
 
-Phase 1 was implemented and automated-tested in a Linux environment. Windows laptop execution and Tauri compilation require follow-up verification as documented in `docs/TESTING.md` and `docs/KNOWN_ISSUES.md`.
+Phase 1 was implemented and automated-tested in a Linux environment, and the initial GitHub Actions run passed on Ubuntu and Windows runners (Python 3.11/3.12). Windows laptop script/UI execution and Tauri compilation still require follow-up verification as documented in `docs/TESTING.md` and `docs/KNOWN_ISSUES.md`.
