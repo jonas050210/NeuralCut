@@ -55,8 +55,14 @@ jobs:
       - name: Run tests (intelligence)
         run: python -m pytest -q neuralcut/tests/test_intelligence.py
 
-      - name: Run tests (effects)
-        run: python -m pytest -q neuralcut/tests/test_effects.py
+      - name: Run tests (effects logic)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "keyframe_evaluation or validation or crud or migrates or via_api"
+
+      - name: Run tests (effects render - color/glow/bloom)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "color_effect or glow_and_bloom"
+
+      - name: Run tests (effects render - compositing)
+        run: python -m pytest -q neuralcut/tests/test_effects.py -k "compositing"
 
       - name: Check frontend JavaScript syntax
         run: node --check neuralcut/frontend/assets/app.js
