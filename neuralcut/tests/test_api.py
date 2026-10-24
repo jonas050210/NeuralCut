@@ -16,7 +16,7 @@ async def test_health_diagnostics_config(client: httpx.AsyncClient) -> None:
     diagnostics = await client.get("/api/v1/diagnostics")
     assert diagnostics.status_code == 200
     body = diagnostics.json()
-    assert "Phase 3" in body["phase"] and "intelligence" in body
+    assert "intelligence" in body and "models" in body
     assert "ffmpeg" in body["media"]
     assert "supported_extensions" in body["media"]
     assert body["models"]["available"] is False

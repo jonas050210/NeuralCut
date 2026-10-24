@@ -79,6 +79,27 @@ class ModelsConfig(BaseModel):
         gt=0,
         description="Optional VRAM budget in GB for model scheduling (extension point).",
     )
+    # Phase 5 agent routing. "builtin" is the deterministic offline planner
+    # (no model at all). "local" talks to an OpenAI-compatible endpoint on
+    # this machine (Ollama / llama.cpp server). "cloud" is allowed only when
+    # allow_cloud is explicitly true; keys are read from the environment
+    # variable named by api_key_env, never stored in the config file.
+    provider: str = Field(default="builtin", pattern=r"^(builtin|local|cloud)$")
+    endpoint: str | None = Field(
+        default=None,
+        description="OpenAI-compatible base URL, e.g. http://127.0.0.1:11434/v1 (local) "
+        "or https://api.openai.com/v1 (cloud, requires allow_cloud).",
+    )
+    model: str | None = Field(default=None, description="Model name for the endpoint.")
+    allow_cloud: bool = Field(
+        default=False,
+        description="Must be explicitly true before any cloud endpoint is contacted.",
+    )
+    api_key_env: str = Field(
+        default="NEURALCUT_CLOUD_API_KEY",
+        description="Name of the environment variable holding the cloud API key.",
+    )
+    timeout_seconds: float = Field(default=30.0, gt=0, le=300)
 
 
 class UISettings(BaseModel):
@@ -92,7 +113,7 @@ class NeuralCutSettings(BaseSettings):
     """Application settings with validation and multiple sources."""
 
     app_name: str = "NeuralCut"
-    version: str = "0.4.0"
+    version: str = "0.5.0"
     debug: bool = False
     host: str = Field(default="127.0.0.1", description="Backend bind host")
     port: int = Field(default=8765, ge=1024, le=65535, description="Backend bind port")

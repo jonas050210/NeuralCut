@@ -146,6 +146,10 @@ changed source file therefore invalidates the cache automatically.
 | `speech_segments[]` | Non-silent ranges from ffmpeg `silencedetect` |
 | `transcript` | `{status: ready|unavailable|failed, reason?, engine?, segments[]}` — segments include word timings only when the optional ASR engine actually ran |
 
+## Agent plans and audit (Phase 5, app data — not project data)
+
+Plans are stored at `<data_dir>/agent/plans.json` (list of plan objects: id, message, source, route, explanation, steps `[{tool, args}]`, risk, status `draft|needs_clarification|executed|partially_executed|failed|rejected|undone`, results, applied_edit_steps, timestamps). The audit log `<data_dir>/agent/audit.jsonl` appends one JSON object per event (`plan_created`, `plan_approved`, `plan_rejected`, `plan_undone`, `step_executed`, `step_failed`). These files are local app data; deleting them loses plan history but never project state.
+
 Masks are run-length encoded row-major over the analysis-resolution grid
 (96×54), starting with a False run (possibly 0). `rle_decode` in
 `backend/intelligence/detection.py` is the reference decoder.
