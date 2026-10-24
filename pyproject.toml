@@ -1,6 +1,6 @@
 [project]
 name = "neuralcut"
-version = "0.5.0"
+version = "0.7.0"
 description = "NeuralCut — local-first AI video editor for Windows. Phase 2: editing core (timeline, undo/redo, FFmpeg export; no AI execution)."
 readme = "README.md"
 requires-python = ">=3.10"

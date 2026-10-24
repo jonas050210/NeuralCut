@@ -38,6 +38,7 @@ The Python suite lives in `neuralcut/tests/` and is configured by `pyproject.tom
 | Media helpers | `tests/media_helpers.py` | Generates short synthetic videos with ffmpeg lavfi (color + sine audio); never personal media. Render/probe tests skip cleanly when no ffmpeg binary is available |
 | Intelligence | `test_intelligence.py` | Moving-car detection/tracking (displacement, direction, mask coverage at the car's expected position), RLE roundtrip, scene-cut shots, speech segments, honest transcript-unavailable, fingerprint cache + invalidation, cancellation, full analysis API flow (timeline untouched) |
 | Effects | `test_effects.py` | Keyframe linear/hold evaluation, registry validation (incl. per-parameter keyframe ranges), effect CRUD/preset/reorder/disable, exact persistence + undo/redo, v2→v3 migration, pixel-verified renders (brightness Δ, glow spread outside a bright square, bloom, two-track compositing, opacity blending), effects API flow |
+| Improvement | `test_improvement.py` | Deterministic/disjoint splits + provenance, training dataset validation + dry-run refusal, opt-in feedback (refuses while disabled; CRUD/export when enabled), benchmark isolation (sentinel user project byte-identical) + exact builtin baseline, promotion gates (reviewer + spot-check mandatory, regression blocks), rollback, candidate config smuggling rejection, API flow |
 | Agent | `test_agent.py` | Tool-schema rejection, read-only auto-answer, draft→approve→execute→undo-plan, reject, ambiguity/clarification (zero steps), invalid model output fallback, execution-time re-validation with nonexistent IDs, cloud double opt-in routing, full chat→render-job API flow |
 
 API tests use `httpx.ASGITransport`, so they exercise FastAPI routing/serialization without needing a fixed TCP port.
@@ -126,6 +127,12 @@ The Phase 1 development environment was Linux without Rust. Before calling the W
    - confirm the window loads and closing it stops the Python backend.
 
 Record Windows version, Python version, commands, and failures in the PR/issue rather than silently adjusting docs.
+
+## Recorded Phase 6–7 results (2026-10-24, Linux dev environment)
+
+- Full suite: **75 passed** (64 prior + 4 agent-hardening regressions + 7 improvement). Ruff and `node --check` clean; CI now runs every test file plus Ruff.
+- Benchmark (built-in planner, synthetic dataset 1.0.0): **14/14 cases** (train 9/9, val 3/3, held_out 2/2) after correcting one case expectation (the fade-in preset is keyframed opacity on the `transform` effect). Benchmark isolation verified by a sentinel-project byte-identity assertion.
+- Phase 7 verification is configuration/documentation-level only: Tauri JSON validated, icons generated, versions unified. **Tauri/Rust compilation, the PyInstaller sidecar, the NSIS installer, and all interactive Windows flows were NOT run** — no Rust toolchain or Windows in this environment (see docs/PACKAGING.md).
 
 ## Recorded Phase 5 results (2026-10-24, Linux dev environment)
 

@@ -17,6 +17,7 @@ project document.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -31,6 +32,11 @@ from neuralcut.backend.agent.tools import (
     plan_risk,
 )
 from neuralcut.errors import NotFoundError, ValidationError
+
+logger = logging.getLogger("neuralcut.agent")
+
+MAX_PLANS = 200          # retained plans (oldest terminal plans pruned first)
+MAX_AUDIT_BYTES = 2_000_000  # audit.jsonl rotates to audit.jsonl.1 past this
 
 
 def _now() -> str:
@@ -158,14 +164,31 @@ class AgentService:
             return plan
 
     def undo_plan(self, plan_id: str) -> dict[str, Any]:
+        """Reverse exactly this plan's edits via its pre-execution snapshot.
+
+        The restore only happens when the timeline is still in the state
+        this plan left behind. If the user (or another plan) edited since,
+        restoring the snapshot would silently revert *their* work, so we
+        refuse and tell them to use manual undo instead. The restore itself
+        is one undoable TimelineService operation.
+        """
         with self._lock:
             plan = self.get_plan(plan_id)
             count = plan.get("applied_edit_steps", 0)
-            if plan["status"] != "executed" or count == 0:
+            if plan["status"] not in {"executed", "partially_executed"} or count == 0:
                 raise ValidationError("plan has no applied edit steps to undo")
+            pre_state = plan.get("pre_state")
+            post_state = plan.get("post_state")
+            if pre_state is None or post_state is None:
+                raise ValidationError(
+                    "plan predates snapshot-based undo; use manual undo instead")
             service = self._container.timeline_service
-            for _ in range(count):
-                service.undo()
+            if service.current_snapshot() != post_state:
+                raise ValidationError(
+                    "timeline changed since this plan executed; undo manually "
+                    "so later edits are not reverted",
+                    details={"plan_id": plan_id})
+            service.restore_snapshot(pre_state)
             plan["status"] = "undone"
             plan["applied_edit_steps"] = 0
             plan["updated_at"] = _now()
@@ -179,6 +202,11 @@ class AgentService:
         plan["status"] = "executing"
         plan["results"] = []
         applied_edits = 0
+        service = self._container.timeline_service
+        # Snapshot before the first step so undo_plan can restore exactly
+        # this plan's starting point (see undo_plan for the safety check).
+        plan["pre_state"] = service.current_snapshot()
+        plan["post_state"] = None
         try:
             for raw_step in plan["steps"]:
                 # Re-validate against the registry AND current state: the
@@ -188,7 +216,11 @@ class AgentService:
                 plan["results"].append({"tool": call.tool, "result": result})
                 from neuralcut.backend.agent.tools import TOOL_REGISTRY
 
-                if TOOL_REGISTRY[call.tool]["risk"] == "edit":
+                # undo/redo tools move through history; they are not new
+                # edits owned by this plan and must not inflate the count
+                # undo_plan relies on.
+                if TOOL_REGISTRY[call.tool]["risk"] == "edit" and call.tool not in {
+                        "undo", "redo"}:
                     applied_edits += 1
                 self._audit("step_executed", plan, {"tool": call.tool})
             plan["status"] = "executed"
@@ -200,6 +232,10 @@ class AgentService:
             if applied_edits:
                 plan["status"] = "partially_executed"
             self._audit("step_failed", plan, {"error": plan["error"]})
+        try:
+            plan["post_state"] = service.current_snapshot()
+        except Exception:  # noqa: BLE001 - project may have been closed mid-plan
+            plan["post_state"] = None
         plan["updated_at"] = _now()
 
     def _execute_step(self, call: ToolCall, plan: dict[str, Any]) -> Any:
@@ -301,10 +337,20 @@ class AgentService:
             "status": plan.get("status"), "details": details or {},
         }
         try:
+            if (self._audit_file.is_file()
+                    and self._audit_file.stat().st_size > MAX_AUDIT_BYTES):
+                backup = self._audit_file.with_suffix(".jsonl.1")
+                try:
+                    backup.unlink(missing_ok=True)
+                    self._audit_file.replace(backup)
+                except OSError:
+                    pass  # rotation is best-effort; appending still works
             with self._audit_file.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, sort_keys=True) + "\n")
-        except OSError:
-            pass  # audit persistence must never break editing
+        except OSError as exc:
+            # Never break editing over an audit write, but never fail
+            # silently either: the gap must be visible in the app log.
+            logger.warning("agent audit write failed (%s): %s", event, exc)
 
     def audit_tail(self, limit: int = 100) -> list[dict[str, Any]]:
         if not self._audit_file.is_file():
@@ -319,13 +365,26 @@ class AgentService:
         return out
 
     def _save_locked(self) -> None:
+        # Retention: keep at most MAX_PLANS plans, pruning the oldest
+        # terminal ones first (drafts awaiting approval are never pruned).
+        if len(self._plans) > MAX_PLANS:
+            terminal = {"executed", "partially_executed", "failed",
+                        "rejected", "undone", "needs_clarification"}
+            ordered = sorted(self._plans.values(), key=lambda p: p["created_at"])
+            for old in ordered:
+                if len(self._plans) <= MAX_PLANS:
+                    break
+                if old["status"] in terminal:
+                    del self._plans[old["id"]]
         try:
             tmp = self._plans_file.with_suffix(".tmp")
             tmp.write_text(
                 json.dumps(self.list_plans(), indent=2, sort_keys=True), encoding="utf-8")
             tmp.replace(self._plans_file)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning("agent plan persistence failed: %s", exc)
+            for plan in self._plans.values():
+                plan["persistence_error"] = str(exc)
 
 
 class _AssetShim:

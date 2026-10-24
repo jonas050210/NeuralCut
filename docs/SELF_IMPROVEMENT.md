@@ -1,6 +1,6 @@
 # Self-Improvement and Evaluation Plan
 
-This document describes the planned Phase 6 system. **NeuralCut does not train models, collect learning feedback, run autonomous experiments, or change its own behavior.** It only provides `EvaluationAdapter` and `SelfImprovementAdapter` contracts that report unavailable. Phase 2 added one prerequisite this plan relies on: deterministic, verifiable operations (timeline invariants and probe-verified renders) that future deterministic graders can check. Phases 3–4 add more gradeable artifacts (shot/track structures with documented tolerances, registry-validated effect state, pixel-checkable renders). No evaluation or feedback system is implemented yet.
+**Implementation status (Phase 6, v0.7.0):** the system described below is implemented in `neuralcut/backend/improvement/` (datasets, isolated benchmark runner, opt-in feedback store, experiment registry with gates/human promotion/rollback/audit, training preparation). Baseline result at implementation time: 14/14 synthetic cases for the built-in planner (any future regression below this is exactly what the gates exist to catch). NeuralCut still never trains models in-app and never changes its own behaviour automatically: candidates are configurations, promotion is human-gated, and fine-tuning is a dry-run specification for the home PC (QLoRA on an RTX 4060 Ti-class card per the research document). The older `EvaluationAdapter`/`SelfImprovementAdapter` stubs remain as status contracts; the real service is `ImprovementService`.
 
 ## Goal
 

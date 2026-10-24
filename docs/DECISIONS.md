@@ -199,3 +199,21 @@ This log records important Phase 1 decisions, reasons, consequences, and what wo
 **Decision:** The default agent route is a deterministic built-in planner covering a bounded intent set. `models.provider=local|cloud` routes to an OpenAI-compatible endpoint the user operates; failures (unreachable, non-JSON, schema-invalid) fall back to the built-in planner with the reason surfaced. Cloud additionally requires `allow_cloud=true` and an env-var API key.
 
 **Reason:** The agent must be useful and demonstrable with no model, no download, and no network — and honest when a model is absent. Routing config is explicit and inspectable in `/api/v1/agent/status`.
+
+## D-025 — Plan undo restores snapshots; it never counts global undo steps (Phase 5 hardening)
+
+**Decision:** Executing an agent plan records pre/post project snapshots. `undo_plan` restores the pre-plan snapshot (as one undoable operation) and only when the current timeline still equals the recorded post-plan state; otherwise it refuses and directs the user to manual undo.
+
+**Reason:** Counting steps on the shared undo stack reverted unrelated manual edits made after a plan ran. Snapshot restore is exact, and the equality guard makes the dangerous case explicit instead of silent.
+
+## D-026 — Self-improvement promotes configurations, never code, and never automatically (Phase 6)
+
+**Decision:** Candidates are model-route/planner configurations evaluated by an isolated benchmark runner against a versioned baseline. Promotion requires per-split tolerance gates plus a named human reviewer with `spot_check_confirmed=true`; rollback restores the previous champion. The champion record does not rewrite the running app's settings — applying it is a deliberate user config action. Fine-tuning is specified as dry-run job specs only.
+
+**Reason:** This captures the measurable value of self-improvement (regression-gated, reversible change) without self-modifying code, silent training, or unvalidated auto-promotion — the failure modes the phase exists to avoid.
+
+## D-027 — Packaged backend is a PyInstaller sidecar; FFmpeg is system or LGPL only (Phase 7)
+
+**Decision:** The Tauri shell launches a PyInstaller onefile backend (`neuralcut-backend`) when present, falling back to a development Python. FFmpeg is resolved from a sibling binary, PATH, or the optional imageio-ffmpeg package; redistributed builds must be LGPL-configured (see docs/PACKAGING.md).
+
+**Reason:** Onefile sidecar removes the dev-Python requirement for end users while keeping the backend a normal Python process the shell can start/stop on a free port. FFmpeg's build-dependent GPL/LGPL status is the main redistribution risk and is handled by policy + documentation rather than bundling an unreviewed binary.

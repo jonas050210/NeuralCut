@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
 from neuralcut.backend.projects.model import Project
 from neuralcut.backend.projects.store import ProjectStore
 from neuralcut.errors import ConflictError, NotFoundError, ProjectError, ValidationError
+
+
+def _locked(method):  # noqa: ANN001, ANN202
+    import functools
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):  # noqa: ANN001, ANN202
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class ProjectService:
@@ -20,9 +32,13 @@ class ProjectService:
         self._path: Path | None = None
         self.recent: list[str] = list(recent or [])[:50]
         self.on_recent_changed = on_recent_changed
+        # Guards current-project/recent state against concurrent API calls
+        # (threadpool endpoints, background jobs, agent execution).
+        self._lock = threading.RLock()
 
     # ---- lifecycle --------------------------------------------------------
 
+    @_locked
     def create(self, name: str, directory: str | Path) -> Project:
         import uuid
 
@@ -48,6 +64,7 @@ class ProjectService:
         self._add_recent(str(saved_path))
         return project
 
+    @_locked
     def open(self, path: str | Path) -> Project:
         path = Path(path)
         project = ProjectStore.load(path)
@@ -56,6 +73,7 @@ class ProjectService:
         self._add_recent(str(path))
         return project
 
+    @_locked
     def save(self, project: Project | None = None, path: str | Path | None = None) -> Path:
         target = Path(path) if path else self._path
         if target is None:
@@ -70,6 +88,7 @@ class ProjectService:
             raise NotFoundError("no project is open")
         return self._project
 
+    @_locked
     def replace_current(self, project: Project) -> Project:
         """Swap the in-memory current project (used by undo/redo restore)."""
         if self._project is None:
@@ -84,6 +103,7 @@ class ProjectService:
     def current_path(self) -> Path | None:
         return self._path
 
+    @_locked
     def close(self) -> None:
         self._project = None
         self._path = None

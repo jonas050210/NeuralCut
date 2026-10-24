@@ -15,6 +15,7 @@ when a different project object becomes current. Editing does not auto-save
 from __future__ import annotations
 
 import copy
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,19 @@ MAX_HISTORY = 100
 _EPS = 1e-9
 
 
+def _locked(method):  # noqa: ANN001, ANN202
+    """Serialize a TimelineService operation on the service RLock."""
+
+    import functools
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):  # noqa: ANN001, ANN202
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class TimelineService:
     def __init__(self, project_service: ProjectService, media) -> None:  # noqa: ANN001
         self._projects = project_service
@@ -34,6 +48,11 @@ class TimelineService:
         self._undo: list[dict[str, Any]] = []
         self._redo: list[dict[str, Any]] = []
         self._history_owner: Project | None = None
+        # One lock for every read-modify-write cycle: FastAPI runs sync
+        # endpoints on a threadpool and jobs/agent execution happen on
+        # worker threads, so snapshot->mutate->commit sequences and the
+        # undo/redo stacks must be atomic w.r.t. each other.
+        self._lock = threading.RLock()
 
     # ---- history plumbing ---------------------------------------------------
 
@@ -72,6 +91,7 @@ class TimelineService:
         self._history_owner = validated
         return validated
 
+    @_locked
     def history_state(self) -> dict[str, Any]:
         self._project()
         return {
@@ -81,6 +101,7 @@ class TimelineService:
             "redo_depth": len(self._redo),
         }
 
+    @_locked
     def undo(self) -> Project:
         project = self._project()
         if not self._undo:
@@ -93,6 +114,7 @@ class TimelineService:
         self._history_owner = restored
         return restored
 
+    @_locked
     def redo(self) -> Project:
         project = self._project()
         if not self._redo:
@@ -100,6 +122,26 @@ class TimelineService:
         snapshot = self._redo.pop()
         self._undo.append(self._snapshot(project))
         restored = Project.model_validate(snapshot)
+        restored.touch()
+        self._projects.replace_current(restored)
+        self._history_owner = restored
+        return restored
+
+    def current_snapshot(self) -> dict[str, Any]:
+        """Deep JSON snapshot of the current project (for plan undo)."""
+        with self._lock:
+            return self._snapshot(self._project())
+
+    @_locked
+    def restore_snapshot(self, snapshot: dict[str, Any]) -> Project:
+        """Replace the current project with ``snapshot`` as one undoable edit.
+
+        The pre-restore state is pushed onto the undo stack, so restoring is
+        itself reversible with a normal undo.
+        """
+        project = self._project()
+        restored = Project.model_validate(copy.deepcopy(snapshot))
+        self._push_history(project)
         restored.touch()
         self._projects.replace_current(restored)
         self._history_owner = restored
@@ -129,6 +171,7 @@ class TimelineService:
 
     # ---- asset operations ------------------------------------------------------
 
+    @_locked
     def import_media(self, path: str | Path) -> ProjectAsset:
         project = self._project()
         resolved = str(Path(path).expanduser())
@@ -154,6 +197,7 @@ class TimelineService:
         self._commit(project, mutated)
         return self._asset(self._projects.get(), asset.id)
 
+    @_locked
     def remove_asset(self, asset_id: str) -> Project:
         project = self._project()
         self._asset(project, asset_id)
@@ -168,6 +212,7 @@ class TimelineService:
 
     # ---- clip operations ---------------------------------------------------------
 
+    @_locked
     def add_clip(
         self,
         asset_id: str,
@@ -218,6 +263,7 @@ class TimelineService:
         self._commit(project, mutated)  # model validator rejects overlaps/bad ranges
         return self._clip(self._projects.get(), clip.id)
 
+    @_locked
     def move_clip(
         self,
         clip_id: str,
@@ -234,6 +280,7 @@ class TimelineService:
         self._commit(project, mutated)
         return self._clip(self._projects.get(), clip_id)
 
+    @_locked
     def trim_clip(
         self,
         clip_id: str,
@@ -270,6 +317,7 @@ class TimelineService:
         self._commit(project, mutated)
         return self._clip(self._projects.get(), clip_id)
 
+    @_locked
     def split_clip(self, clip_id: str, *, at_timeline_seconds: float) -> list[ProjectClip]:
         project = self._project()
         original = self._clip(project, clip_id)
@@ -302,6 +350,7 @@ class TimelineService:
         current = self._projects.get()
         return [self._clip(current, clip_id), self._clip(current, second.id)]
 
+    @_locked
     def remove_clip(self, clip_id: str) -> Project:
         project = self._project()
         self._clip(project, clip_id)
@@ -321,6 +370,7 @@ class TimelineService:
             details={"clip_id": clip.id, "effect_id": effect_id},
         )
 
+    @_locked
     def add_effect(self, clip_id: str, *, type: str, params: dict | None = None,
                    keyframes: dict | None = None, preset: str | None = None):
         from neuralcut.backend.effects.engine import PRESETS, validate_effect
@@ -352,6 +402,7 @@ class TimelineService:
         self._commit(project, mutated)
         return self._effect(self._clip(self._projects.get(), clip_id), effect.id)
 
+    @_locked
     def update_effect(self, clip_id: str, effect_id: str, *, params: dict | None = None,
                       enabled: bool | None = None):
         from neuralcut.backend.effects.engine import validate_effect
@@ -368,6 +419,7 @@ class TimelineService:
         self._commit(project, mutated)
         return self._effect(self._clip(self._projects.get(), clip_id), effect_id)
 
+    @_locked
     def remove_effect(self, clip_id: str, effect_id: str) -> Project:
         project = self._project()
         self._effect(self._clip(project, clip_id), effect_id)
@@ -376,6 +428,7 @@ class TimelineService:
         clip.effects = [e for e in clip.effects if e.id != effect_id]
         return self._commit(project, mutated)
 
+    @_locked
     def move_effect(self, clip_id: str, effect_id: str, *, direction: int):
         """Move an effect one step in the chain (direction -1 up / +1 down)."""
         if direction not in (-1, 1):
@@ -393,6 +446,7 @@ class TimelineService:
         self._commit(project, mutated)
         return self._effect(self._clip(self._projects.get(), clip_id), effect_id)
 
+    @_locked
     def set_keyframes(self, clip_id: str, effect_id: str, *, property: str,
                       keyframes: list):
         """Replace the keyframe list for one property (empty list clears it)."""
@@ -418,6 +472,7 @@ class TimelineService:
 
     # ---- views ---------------------------------------------------------------------
 
+    @_locked
     def timeline(self) -> dict[str, Any]:
         project = self._project()
         assets = {a.id: a for a in project.assets}

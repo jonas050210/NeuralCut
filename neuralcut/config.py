@@ -109,11 +109,34 @@ class UISettings(BaseModel):
     )
 
 
+class ImprovementConfig(BaseModel):
+    """Phase 6 self-improvement safeguards.
+
+    Everything here is local and opt-in. Feedback recording is OFF by
+    default and nothing is ever collected silently; experiments run only
+    against synthetic fixtures in isolated temp directories; promotion is
+    never automatic (``auto_promotion`` exists only to be visibly false --
+    promoting always requires the explicit human-gated API call).
+    """
+
+    feedback_enabled: bool = Field(
+        default=False,
+        description="Opt-in: record agent-plan feedback events locally. "
+        "When false, feedback recording refuses to store anything.")
+    max_benchmark_cases: int = Field(default=50, ge=1, le=500)
+    case_budget_seconds: float = Field(default=120.0, gt=0, le=3600)
+    promotion_tolerance: float = Field(
+        default=0.05, ge=0, le=0.5,
+        description="A candidate may trail the baseline by at most this "
+        "much overall accuracy and still be gate-eligible; any single "
+        "split may trail by at most twice this.")
+
+
 class NeuralCutSettings(BaseSettings):
     """Application settings with validation and multiple sources."""
 
     app_name: str = "NeuralCut"
-    version: str = "0.5.0"
+    version: str = "0.7.0"
     debug: bool = False
     host: str = Field(default="127.0.0.1", description="Backend bind host")
     port: int = Field(default=8765, ge=1024, le=65535, description="Backend bind port")
@@ -124,6 +147,7 @@ class NeuralCutSettings(BaseSettings):
     )
     recent_projects: list[str] = Field(default_factory=list, max_length=50)
 
+    improvement: ImprovementConfig = Field(default_factory=ImprovementConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     jobs: JobsConfig = Field(default_factory=JobsConfig)
     media: MediaConfig = Field(default_factory=MediaConfig)

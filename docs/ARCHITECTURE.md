@@ -358,3 +358,25 @@ levels live in `tools.py`; execution is a direct mapping onto
 against current state. Plans persist in `<data_dir>/agent/plans.json`;
 every event is appended to `audit.jsonl`. Project questions are answered
 from context without touching media files.
+
+## Self-improvement (Phase 6) — `neuralcut/backend/improvement/`
+
+`ImprovementService` evaluates *candidate configurations* (agent model-route
+settings) with `BenchmarkRunner`, which builds a throwaway `Container` in a
+temporary directory, generates synthetic fixture media/projects, runs the
+agent against versioned cases (`datasets.py`, provenance + template-based
+train/val/held-out splits), and grades deterministically. Reports compare
+against a stored baseline in `registry.py`; promotion requires per-split
+tolerance gates plus a named human spot-check, and rollback restores the
+previous champion. Feedback (`feedback.py`) is opt-in and local. Training
+is prepared as validated dry-run job specs (`training.py`) and never runs
+in-app. Nothing in this package executes generated code or modifies the
+running application's settings.
+
+## Packaging (Phase 7) — `src-tauri/`
+
+The Tauri 2 shell allocates a free loopback port, launches the backend
+(packaged PyInstaller sidecar `neuralcut-backend`, or a development
+Python), waits for it to listen, opens the webview at that port, and kills
+the backend on exit. Installer configuration (NSIS, per-user), icons, and
+the FFmpeg licensing policy live with the shell; see `docs/PACKAGING.md`.

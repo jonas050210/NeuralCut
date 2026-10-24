@@ -122,6 +122,15 @@ Job functions must poll `cancel_event`, validate payload values, and avoid mutat
 - `model_client.py` — `ModelRouter`: builtin/local/cloud routing rules and JSON-plan generation over an injectable transport.
 - `service.py` — `AgentService`: context building, plan lifecycle (draft/approve/reject/undo), controlled execution, plan persistence, JSONL audit.
 
+### `neuralcut/backend/improvement/` (Phase 6)
+
+- `datasets.py` — synthetic benchmark case templates, provenance, deterministic template-based splits, versioned manifest + fingerprint.
+- `benchmark.py` — `BenchmarkRunner`: fully isolated runs (temp container/projects/media), deterministic graders, per-split metrics, failure-category taxonomy. Never touches user projects.
+- `feedback.py` — opt-in local feedback store (JSONL; refuses while disabled; list/export/delete).
+- `registry.py` — baselines, experiments, promotion gates, human-gated promotion, rollback, audit.
+- `training.py` — dataset validation + dry-run training job specs; execution always refuses in-app.
+- `service.py` — `ImprovementService` facade wired in `di.py`; API in `api/v1/improvement.py`.
+
 ### `neuralcut/backend/api/v1/agent.py` (Phase 5)
 
 - `/agent/status|chat|plans|plans/{id}/approve|reject|undo|audit`. Handlers delegate to `AgentService`; no execution logic in routes.

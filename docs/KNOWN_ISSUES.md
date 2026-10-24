@@ -43,16 +43,14 @@ Known packaging gaps:
 ### Effects limits (Phase 4)
 
 - **ffmpeg version sensitivity (found by CI):** with the runner's ffmpeg 8.x, framesync-based effect chains could emit runaway video stream durations (a 2s clip reported as 2048s) while audio stayed correct. Composite segments are therefore hard-bounded with `trim`/`setpts` + `atrim`/`asetpts` and an output `-t`, making segment length exact across ffmpeg builds. Prefer a current ffmpeg (7.x/8.x) and report render-duration mismatches with the ffmpeg version attached.
-### Effects limits (Phase 4)
-
 - Keyframes are evaluated once per atomic render interval (at its midpoint), so a fast ramp inside one long clip renders as steps at clip boundaries rather than a continuous ramp. The preview evaluates at the playhead, so preview/export can differ slightly on ramps.
 - No transitions, text, speed ramps, or mask-based effects (track masks are analysis data, not yet effect inputs).
 - Compositing re-encodes every interval; long multi-track projects render slower than the Phase 2 single-track path.
 
 ### Editing core limits
 
-- Export is **MP4 (H.264/AAC) only**; no other containers/codecs, transitions, effects, text, speed changes, or keyframes.
-- **No compositing:** clips on different tracks that overlap in time are rejected at export (the timeline is flattened into one sequence). Same-track overlaps are rejected at edit time.
+- Export is **MP4 (H.264/AAC) only**; no other containers/codecs, transitions, text, or speed changes. Effects/keyframes and multi-track compositing are supported (Phase 4) within the registry's effect set.
+- Same-track overlaps are rejected at edit time by the project model; overlapping clips on *different* tracks are composited in timeline order.
 - **Edited preview is approximate:** the browser plays source ranges back-to-back; seams at clip boundaries and gap timing are not frame-accurate. Only the FFmpeg export is the final output.
 - **Assets are path references, not copies.** Moving/deleting a source file marks it missing; there is no relink UI yet.
 - **Undo history is memory-only** (max 100 snapshots), resets when switching projects, and edits are not auto-saved — unsaved edits are lost if the backend exits.
@@ -60,7 +58,7 @@ Known packaging gaps:
 
 ### Phase 1 limitations that remain
 
-- No transcription, tracking, effect, or AI command functionality (later phases).
+- The Settings UI is still read-only, projects are single-open per process, and jobs/agent plans are memory/app-data only (see below). Transcription, tracking, effects, and AI commands have since landed in Phases 3–5.
 
 ### Settings UI is read-only
 
@@ -142,3 +140,14 @@ Media frameworks, codecs, ASR/diarization models, quantized LLMs, and fixture me
 - What minimum Windows laptop specification should be treated as the performance baseline?
 
 Record decisions in `docs/DECISIONS.md` when answered; do not encode guesses as requirements.
+
+### Self-improvement limits (Phase 6)
+
+- Benchmark cases cover the built-in planner's documented intents on synthetic fixtures. They do not measure real-model plan quality, open-ended editing quality, or performance on real footage; treat accuracy as a regression signal, not a quality score.
+- Promotion changes the registry's champion record only. Applying a champion configuration to the live app remains a manual config change by the user; nothing rewrites running settings automatically.
+- Feedback is a local JSONL file containing the instruction/note text the user chose to record. It is never uploaded; delete it from the Improvement view/API or remove `<data_dir>/improvement/feedback.jsonl`.
+
+### Packaging limits (Phase 7)
+
+- The Tauri shell and installer configuration are **uncompiled and unverified** (no Rust/WebView2 in the development environment); the PyInstaller sidecar script is likewise unrun. Physical Windows verification steps and current status are tracked in `docs/PACKAGING.md`.
+- No code signing or auto-update mechanism exists; Windows SmartScreen warnings are expected for unsigned installers.

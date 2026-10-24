@@ -38,3 +38,5 @@ neuralcut/instance/
 # Logs
 logs/
 neuralcut/logs/
+src-tauri/binaries/neuralcut-backend*
+src-tauri/target/

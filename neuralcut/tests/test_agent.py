@@ -199,3 +199,98 @@ async def test_agent_via_api(client: httpx.AsyncClient, tmp_path: Path) -> None:
         await asyncio.sleep(0.1)
     assert final is not None and final["status"] == "completed"
     assert clip_id
+
+
+def test_undo_plan_refuses_after_manual_edit(agent_project) -> None:  # noqa: ANN001
+    """Regression: undo_plan must not revert edits the user made afterwards."""
+    container, _asset, clip = agent_project
+    service = container.timeline_service
+    plan = container.agent_service.chat("split clip hero at 1s")
+    container.agent_service.approve(plan["id"])
+    assert len(service.timeline()["clips"]) == 2
+    # Manual edit after the plan: renaming/splitting further changes state.
+    first = service.timeline()["clips"][0]
+    service.split_clip(first["id"], at_timeline_seconds=0.5)
+    assert len(service.timeline()["clips"]) == 3
+    with pytest.raises(ValidationError):
+        container.agent_service.undo_plan(plan["id"])
+    # The manual edit is untouched.
+    assert len(service.timeline()["clips"]) == 3
+
+
+def test_partially_executed_plan_is_undoable(agent_project) -> None:  # noqa: ANN001
+    """A plan that fails mid-way keeps its applied edits undoable per plan."""
+    container, _asset, clip = agent_project
+    service = container.timeline_service
+    from neuralcut.backend.agent.tools import ToolCall
+
+    plan = {
+        "id": "partial-test", "message": "manual", "source": "builtin",
+        "model_note": None, "route": {"mode": "builtin"}, "explanation": "",
+        "answer": None, "clarification": None,
+        "steps": [
+            ToolCall(tool="split_clip", args={
+                "clip_id": clip.id, "at_timeline_seconds": 1.0}).model_dump(),
+            ToolCall(tool="remove_clip", args={"clip_id": "missing"}).model_dump(),
+        ],
+        "risk": "edit", "status": "draft", "results": [], "error": None,
+        "applied_edit_steps": 0, "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    container.agent_service._plans[plan["id"]] = plan
+    executed = container.agent_service.approve(plan["id"])
+    assert executed["status"] == "partially_executed"
+    assert len(service.timeline()["clips"]) == 2
+    undone = container.agent_service.undo_plan(plan["id"])
+    assert undone["status"] == "undone"
+    assert len(service.timeline()["clips"]) == 1
+
+
+def test_model_json_extraction_tolerates_prose_and_fences() -> None:
+    from neuralcut.backend.agent.model_client import _extract_json_object
+
+    assert _extract_json_object('{"steps": []}') == {"steps": []}
+    assert _extract_json_object('```json\n{"steps": []}\n```') == {"steps": []}
+    assert _extract_json_object('Here is the plan: {"steps": []} Hope that helps') == {
+        "steps": []}
+    with pytest.raises(ValidationError):
+        _extract_json_object("no json at all")
+    with pytest.raises(ValidationError):
+        _extract_json_object("[1, 2, 3]")
+
+
+def test_concurrent_timeline_edits_stay_consistent(agent_project) -> None:  # noqa: ANN001
+    """Parallel split/undo operations must not corrupt history or counts."""
+    import threading as _threading
+
+    container, _asset, clip = agent_project
+    service = container.timeline_service
+    errors: list[Exception] = []
+
+    def worker(n: int) -> None:
+        try:
+            for _ in range(5):
+                clips = service.timeline()["clips"]
+                target = clips[n % len(clips)]
+                try:
+                    service.split_clip(
+                        target["id"],
+                        at_timeline_seconds=(
+                            target["timeline_start_seconds"] + 0.2))
+                except Exception:  # noqa: BLE001 - stale clip ids are legal races
+                    pass
+                service.undo()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [_threading.Thread(target=worker, args=(i,)) for i in range(4)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(timeout=30)
+    assert not errors
+    state = service.timeline()
+    # Timeline model invariants held throughout (no exception, valid state).
+    assert state["clips"], "timeline must still have clips"
+    hist = service.history_state()
+    assert hist["undo_depth"] <= 100

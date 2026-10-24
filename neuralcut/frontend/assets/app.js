@@ -137,12 +137,13 @@ function showView(id) {
   if (id === "project") void loadCurrentProject();
   if (id === "timeline") void loadTimeline();
   if (id === "agent") void loadAgent();
+  if (id === "improve") void loadImprovement();
   if (id === "projects") void loadRecent();
 }
 
 function nav() {
   const hash = (window.location.hash || "#dashboard").replace("#", "");
-  const valid = ["dashboard", "projects", "project", "timeline", "agent", "jobs", "settings", "logs"];
+  const valid = ["dashboard", "projects", "project", "timeline", "agent", "improve", "jobs", "settings", "logs"];
   showView(valid.includes(hash) ? hash : "dashboard");
 }
 
@@ -733,6 +734,23 @@ async function boot() {
     if (undo) void agentPlanAction("undo", undo.dataset.planUndo);
   });
 
+  $el("btn-baseline")?.addEventListener("click", async () => {
+    msg("improve-msg", "Running baseline benchmark in an isolated temp workspace…");
+    try {
+      const report = await apiJson("/improvement/benchmarks/baseline", { method: "POST" });
+      setJson("improve-report", { overall: report.overall, per_split: report.per_split, dataset: report.dataset_version });
+      msg("improve-msg", "Baseline recorded.", "ok");
+      await loadImprovement();
+    } catch (err) { msg("improve-msg", err.message, "err"); }
+  });
+  $el("btn-rollback")?.addEventListener("click", async () => {
+    try {
+      await apiJson("/improvement/rollback", { method: "POST" });
+      msg("improve-msg", "Rolled back to the previous champion.", "ok");
+      await loadImprovement();
+    } catch (err) { msg("improve-msg", err.message, "err"); }
+  });
+
   setText("api-url", API_BASE || window.location.origin);
 }
 
@@ -1245,4 +1263,22 @@ async function agentPlanAction(kind, id) {
     await loadAgent();
     if (typeof loadTimeline === "function") void loadTimeline();
   } catch (err) { msg("agent-msg", err.message, "err"); }
+}
+
+
+/* ---------- Phase 6 self-improvement ---------- */
+
+async function loadImprovement() {
+  try {
+    const status = await apiJson("/improvement/status");
+    setText("improve-status", `Feedback: ${status.feedback_enabled ? "enabled (opt-in)" : "disabled (opt-in)"} · ` +
+      `Champion: ${status.champion ? status.champion.name : "none"} · Baseline: ${status.has_baseline ? "recorded" : "not run"} · ` +
+      `Auto-promotion: never. ${status.isolation}.`);
+    const list = await apiJson("/improvement/experiments");
+    setJson("improve-experiments", { champion: list.champion, experiments: list.experiments.map((e) => ({ name: e.name, status: e.status })) });
+    const audit = await apiJson("/improvement/audit?limit=50");
+    setJson("improve-audit", audit.events);
+  } catch (err) {
+    msg("improve-msg", err.message, "err");
+  }
 }
