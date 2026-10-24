@@ -133,7 +133,7 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ## Phase 6 — Self-Improvement
 
-**Status:** not started.
+**Status:** implemented (evaluation/feedback/experiments/promotion; fine-tuning prepared as dry-run only, never executed in-app).
 
 ### Scope
 
@@ -146,18 +146,18 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ### Acceptance criteria
 
-- [ ] A sandbox evaluation run executes against fixture copies, never user projects, and produces a reproducible report.
-- [ ] Train/validation/held-out data are split by source video and task template; held-out data is access-controlled in the pipeline.
-- [ ] Feedback is opt-in, inspectable, and deletable; no silent training on user media occurs.
-- [ ] Candidate improvements are compared with the incumbent on held-out and regression suites.
-- [ ] Promotion requires deterministic gates plus human spot-checks; rollback to the previous version is one action.
-- [ ] Experiments record code/config/model/data versions sufficient to reproduce results.
-- [ ] Canary checks detect major general-capability or tool-calling regressions.
-- [ ] Documentation explains what improved, what regressed, and why a candidate was promoted or rejected.
+- [x] A sandbox evaluation run executes against fixture copies, never user projects, and produces a reproducible report. (isolated temp container; sentinel-project test)
+- [x] Train/validation/held-out data are split by task template + setup (deterministic cycle, provenance per case); held-out is sealed — used by promotion gates only, never for training/tuning inputs.
+- [x] Feedback is opt-in (default off, recording refuses while disabled), inspectable, exportable, and deletable. No silent training on user media occurs anywhere.
+- [x] Candidate configurations are compared with the stored baseline per split (train/val/held-out) with tolerance gates; dataset fingerprints must match.
+- [x] Promotion requires passing gates AND a named reviewer with spot_check_confirmed=true; rollback restores the previous champion in one call. There is no automatic promotion path.
+- [x] Experiment/report records carry dataset version + fingerprint and the candidate model-route config; benchmark reports are reproducible from dataset version.
+- [x] Per-split gates (incl. held-out presence) plus the failure-category taxonomy (wrong_plan/clarification_miss/execution_failure/harness_error) act as canaries; a split regression beyond tolerance blocks promotion.
+- [x] Gates return per-check baseline/candidate values; promotion/rollback/gate outcomes are audit-logged (improvement/audit.jsonl).
 
 ## Phase 7 — Packaging and Release
 
-**Status:** not started.
+**Status:** implemented as far as this environment permits — Tauri shell hardened (free port, sidecar resolution, backend cleanup), NSIS installer config + icons, PyInstaller sidecar build script, unified 0.7.0 versions, packaging/licensing docs. **Compilation, installer execution, and physical-Windows verification remain outstanding (docs/PACKAGING.md lists them explicitly as not verified).**
 
 ### Scope
 

@@ -8,4 +8,5 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 }
 
 & .\.venv\Scripts\python.exe -m pytest -q
+& .\.venv\Scripts\python.exe -m ruff check neuralcut
 & node --check neuralcut\frontend\assets\app.js

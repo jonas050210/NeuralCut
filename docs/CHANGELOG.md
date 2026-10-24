@@ -6,6 +6,29 @@ All significant changes to NeuralCut are recorded here.
 
 - Nothing yet.
 
+## [0.7.0] — 2026-10-24 — Phases 5 (hardening), 6, and 7
+
+### Fixed (Phase 5 hardening)
+
+- **Plan undo correctness:** agent plan undo now restores the exact pre-plan snapshot and refuses when the timeline changed since execution (previously it popped N entries from the global undo stack, reverting unrelated manual edits). Partially executed plans are undoable per plan; `undo`/`redo` tools no longer inflate the applied-edit count.
+- **Thread safety:** `TimelineService` and `ProjectService` serialize read-modify-write cycles and project lifecycle with re-entrant locks.
+- **Persistence visibility:** agent plan/audit write failures are logged instead of silently swallowed; plan retention cap (200) and audit rotation (2 MB) added.
+- **Model parsing:** model JSON extraction tolerates code fences and surrounding prose.
+- **CI:** every test file now runs in CI, including `test_agent.py` and `test_improvement.py`; Ruff and the frontend syntax check are CI steps.
+- Documentation contradictions in Known Issues corrected.
+
+### Added (Phase 6 — Self-Improvement)
+
+- `backend/improvement/`: versioned synthetic benchmark datasets (provenance, deterministic template-based train/val/held-out splits, sealed held-out), isolated benchmark runner (temporary container/projects; user projects untouched — sentinel-tested) with deterministic graders and failure-category taxonomy, baseline reports, opt-in local feedback store (inspect/export/delete; refuses while disabled), experiment registry with per-split promotion gates, mandatory human spot-check promotion, one-action rollback, and audit log. Fine-tuning exists only as validated dry-run job specifications; training execution refuses in-app.
+
+### Added/Changed (Phase 7 — Packaging)
+
+- Tauri shell: free-port selection, sidecar/dev backend resolution, backend readiness wait, process cleanup, restrictive CSP; NSIS installer configuration with icons; unified version 0.7.0; PyInstaller sidecar build script (`scripts/build_backend.ps1`); project saves fsync before atomic replace; actionable port-in-use error at backend startup; `docs/PACKAGING.md` (build steps, FFmpeg licensing, upgrades/uninstall, honest verification table).
+
+### Not verified
+
+- Tauri compilation, NSIS installer behaviour, PyInstaller sidecar, and all physical-Windows flows (no Rust/Windows in this environment). See docs/PACKAGING.md.
+
 ## [0.5.0] — 2026-10-24 — Phase 5: AI Editing Agent
 
 ### Added

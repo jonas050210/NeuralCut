@@ -139,3 +139,56 @@ The research leaves these open:
 - Whether the editing core should adopt OpenTimelineIO/MLT concepts directly or keep a custom canonical model with import/export adapters.
 
 Phase 1 avoids locking the product into answers that require later-phase prototypes and measurements.
+
+## Follow-up research (2026-10-24): agent harnesses and evaluation
+
+**Question:** can Harness²-style recursive agent harnessing or comparable
+agent-evaluation practice improve NeuralCut's Phase 5/6 design?
+
+**Sources:** google-research/harness2 (GitHub, Apache-2.0; paper
+arXiv:2610.14224); Self-Harness (arXiv:2606.09498); SWE-bench (ICLR 2024)
+and SWE-Bench Pro (arXiv:2509.16941) for FAIL_TO_PASS/PASS_TO_PASS-style
+gating and private held-out sets; LangChain's agent-evaluation readiness
+checklist; eval-harness practice write-ups (trajectory/failure taxonomy,
+strata floors, holdout discipline).
+
+**What Harness² does:** keeps model weights frozen and recursively edits
+the *harness* around the model (system prompt, guardrails, memory, tool
+guidance, subagents, skills, scripts, plugins) via a contrastive
+Propose–Probe–Compose loop, accumulating lessons across tasks. Reported
+gains: up to +11.5 points (WorkBuddy-Bench), +4.5 (JobBench), +11.8pp
+partial pass (LAB) after one step with GLM-5 / Gemini 3.5 Flash.
+
+**Useful for NeuralCut (adopted):**
+
+- *Harness-as-candidate:* evaluating prompts/tool-guidance/configuration
+  as versioned candidates against a frozen baseline matches our Phase 6
+  candidate-configuration model (D-026) — validated externally.
+- *Failure taxonomy before fixes:* categorizing failures (wrong plan,
+  clarification miss, execution failure, harness error) instead of a
+  single score — adopted in `benchmark.py` reports.
+- *Held-out discipline + per-stratum gates:* already implemented via
+  sealed held-out cases and per-split tolerance gates; SWE-bench's
+  PASS_TO_PASS analog is our regression tolerance per split.
+
+**Unsuitable / rejected for NeuralCut:**
+
+- *Automatic harness self-editing and adoption* conflicts with hard
+  project constraints: no automatic promotion, no untrusted/generated
+  code execution, human spot-check required. Harness²'s loop also assumes
+  frontier hosted models (Vertex AI) and open-world professional tasks —
+  a different risk and resource profile from a local, offline, single-user
+  editor with a deliberately narrow, safety-validated tool surface.
+- Adopting the Harness² framework itself (Python 3.12+/uv, cloud model
+  calls, code-execution harnesses) would add a large dependency whose
+  core capability we are explicitly not allowed to enable. Documented as
+  a recommendation to revisit **only** if a future phase permits
+  human-reviewed harness proposals: the safe subset is "propose config/
+  prompt candidates offline → benchmark gates → human promotion", which
+  Phase 6 already implements for model-route configurations.
+
+**Also considered:** LLM-as-judge grading (rejected as a *gate* — drift
+and gaming risk; deterministic graders remain the gate), and trajectory
+grading of full agent transcripts (useful future extension of the
+benchmark runner once a real local LLM endpoint is evaluated on the
+home PC).

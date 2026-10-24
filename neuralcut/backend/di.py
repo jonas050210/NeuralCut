@@ -49,6 +49,9 @@ class Container:
             AnalysisStore(context.data_dir / "analysis"), self.media, self.settings
         )
         self.models = ModelManagerAdapter(self)
+        from neuralcut.backend.improvement.service import ImprovementService
+
+        self.improvement_service = ImprovementService(self)
         from neuralcut.backend.agent.service import AgentService
 
         self.agent_service = AgentService(self)

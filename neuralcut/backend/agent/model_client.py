@@ -40,6 +40,31 @@ def _urllib_transport(url: str, payload: dict[str, Any],
         return json.loads(response.read().decode("utf-8"))
 
 
+def _extract_json_object(text: str) -> dict[str, Any]:
+    """Parse a JSON object out of model output, tolerating code fences and
+    surrounding prose. Strict afterwards: the result must be an object."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        lines = lines[1:] if lines and lines[0].startswith("```") else lines
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start == -1 or end <= start:
+            raise ValidationError("model did not return valid JSON") from None
+        try:
+            parsed = json.loads(cleaned[start:end + 1])
+        except json.JSONDecodeError as exc:
+            raise ValidationError(f"model did not return valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValidationError("model response must be a JSON object")
+    return parsed
+
+
 class ModelRouter:
     def __init__(self, settings, transport: Transport | None = None) -> None:  # noqa: ANN001
         self.models = settings.models
@@ -124,13 +149,7 @@ class ModelRouter:
                 details={"endpoint": self.models.endpoint},
             ) from exc
         if isinstance(content, str):
-            text = content.strip()
-            if text.startswith("```"):
-                text = text.strip("`").removeprefix("json").strip()
-            try:
-                content = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise ValidationError(f"model did not return valid JSON: {exc}") from exc
+            content = _extract_json_object(content)
         if not isinstance(content, dict) or "steps" not in content:
             raise ValidationError("model response must be an object with a 'steps' list")
         calls = []

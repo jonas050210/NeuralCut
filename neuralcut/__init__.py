@@ -8,5 +8,5 @@ No timeline, editing actions, AI model execution, or self-improvement is
 implemented in this phase — those are defined as extension points only.
 """
 
-__version__ = "0.5.0"
-__phase__ = "5 — AI Editing Agent"
+__version__ = "0.7.0"
+__phase__ = "7 — Packaging and Refinement"

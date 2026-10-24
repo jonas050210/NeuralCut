@@ -1,6 +1,6 @@
 [package]
 name = "neuralcut"
-version = "0.1.0"
+version = "0.7.0"
 description = "NeuralCut desktop shell (Phase 1 foundation; packaged backend is Phase 7)"
 authors = ["NeuralCut contributors"]
 edition = "2021"

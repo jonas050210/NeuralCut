@@ -1,0 +1,7 @@
+FFmpeg is licensed under the LGPL v2.1+ or GPL v2+ depending on build
+configuration. NeuralCut does NOT bundle an FFmpeg binary in this
+repository. Packaged builds must either (a) detect a system FFmpeg at
+runtime, or (b) ship an LGPL-configured FFmpeg build together with its
+full license text and corresponding source offer. GPL-configured builds
+(including many popular "full" Windows builds) must not be redistributed
+with NeuralCut without GPL compliance. See docs/PACKAGING.md.

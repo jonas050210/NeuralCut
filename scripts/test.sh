@@ -8,4 +8,5 @@ if [ ! -x .venv/bin/python ]; then
 fi
 
 .venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check neuralcut
 node --check neuralcut/frontend/assets/app.js

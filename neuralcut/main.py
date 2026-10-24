@@ -61,7 +61,17 @@ def main(argv: list[str] | None = None) -> int:
         threading.Thread(target=_open, daemon=True).start()
 
     print(f"NeuralCut {context.settings.version} — http://{host}:{port}/")
-    uvicorn.run(app, host=host, port=port, log_config=None, access_log=False)
+    try:
+        uvicorn.run(app, host=host, port=port, log_config=None, access_log=False)
+    except OSError as exc:
+        # Most commonly the port is already taken (another NeuralCut or a
+        # foreign process). Fail with an actionable message, not a traceback.
+        print(
+            f"error: could not bind {host}:{port} ({exc}). "
+            "Is another NeuralCut instance running? "
+            "Retry with --port <free-port>.",
+            file=sys.stderr)
+        return 2
     return 0
 
 

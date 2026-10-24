@@ -45,6 +45,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m pip install ruff==0.17.2
+
+      - name: Lint (ruff) and frontend syntax
+        run: |
+          python -m ruff check neuralcut
+          node --check neuralcut/frontend/assets/app.js
 
       - name: Run tests (core, projects, jobs, API)
         run: python -m pytest -q neuralcut/tests/test_config_logging.py neuralcut/tests/test_projects.py neuralcut/tests/test_jobs.py neuralcut/tests/test_api.py neuralcut/tests/test_main.py neuralcut/tests/test_integration_adapters.py
@@ -54,6 +60,12 @@ jobs:
 
       - name: Run tests (intelligence)
         run: python -m pytest -q neuralcut/tests/test_intelligence.py
+
+      - name: Run tests (agent)
+        run: python -m pytest -q neuralcut/tests/test_agent.py
+
+      - name: Run tests (self-improvement)
+        run: python -m pytest -q neuralcut/tests/test_improvement.py
 
       - name: Run tests (effects logic)
         run: python -m pytest -q neuralcut/tests/test_effects.py -k "keyframe_evaluation or validation or crud or migrates or via_api"
@@ -67,5 +79,3 @@ jobs:
       - name: Run tests (effects render - compositing)
         run: python -m pytest -q neuralcut/tests/test_effects.py -k "compositing"
 
-      - name: Check frontend JavaScript syntax
-        run: node --check neuralcut/frontend/assets/app.js

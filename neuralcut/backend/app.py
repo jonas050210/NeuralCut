@@ -32,7 +32,7 @@ def build_app(container: Container | None = None) -> FastAPI:
 
     app = FastAPI(
         title="NeuralCut",
-        description="Local-first AI video editor — Phase 1 foundation",
+        description="Local-first AI video editor",
         version=container.settings.version,
     )
 

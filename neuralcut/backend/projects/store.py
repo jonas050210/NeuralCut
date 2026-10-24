@@ -36,7 +36,17 @@ class ProjectStore:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, indent=2, sort_keys=True)
                 fh.write("\n")
+                fh.flush()
+                os.fsync(fh.fileno())  # survive OS crash, not just app crash
             os.replace(tmp_name, path)
+            try:  # best-effort directory fsync (not supported everywhere)
+                dir_fd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass
         except BaseException:
             try:
                 os.unlink(tmp_name)
