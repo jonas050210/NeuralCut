@@ -68,7 +68,8 @@ class FFmpegRenderEngine:
                 "Phase 2 export supports .mp4 output only",
                 details={"output_path": str(output_path)},
             )
-        segments_plan = self._plan(project)
+        composite = self._needs_composite(project)
+        segments_plan = self._plan_composite(project) if composite else self._plan(project)
         expected_duration = project.timeline_duration_seconds
         total_steps = len(segments_plan) + 1  # + concat
 
@@ -85,6 +86,8 @@ class FFmpegRenderEngine:
                 segment_file = tmp_dir / f"segment-{index:04d}.mp4"
                 if segment["kind"] == "gap":
                     cmd = self._gap_command(ffmpeg, segment_file, segment["duration"], settings)
+                elif segment["kind"] == "composite":
+                    cmd = self._composite_command(ffmpeg, segment_file, segment, settings)
                 else:
                     cmd = self._clip_command(ffmpeg, segment_file, segment, settings)
                 self._run(cmd, cancel_event, segment_desc(segment))
@@ -129,6 +132,7 @@ class FFmpegRenderEngine:
             "width": settings.width,
             "height": settings.height,
             "fps": settings.fps,
+            "composited": composite,
         }
 
     # ---- planning -----------------------------------------------------------
@@ -176,6 +180,145 @@ class FFmpegRenderEngine:
             )
             cursor = max(cursor, clip.timeline_end_seconds)
         return plan
+
+    # ---- compositing / effects planning (Phase 4) ------------------------------
+
+    @staticmethod
+    def _needs_composite(project: Project) -> bool:
+        if any(clip.effects for clip in project.clips):
+            return True
+        ordered = sorted(
+            project.clips, key=lambda c: (c.timeline_start_seconds, c.track, c.id)
+        )
+        cursor = 0.0
+        for clip in ordered:
+            if clip.timeline_start_seconds < cursor - 1e-6:
+                return True
+            cursor = max(cursor, clip.timeline_end_seconds)
+        return False
+
+    def _plan_composite(self, project: Project) -> list[dict[str, Any]]:
+        """Split the timeline into atomic intervals with a constant layer set.
+
+        Layers are ordered by track (lowest first = bottom). Effects and
+        keyframes are evaluated at each interval's midpoint.
+        """
+        if not project.clips:
+            raise ValidationError("timeline is empty; add at least one clip before exporting")
+        assets = {a.id: a for a in project.assets}
+        for clip in project.clips:
+            asset = assets.get(clip.asset_id)
+            if asset is None:
+                raise ValidationError(f"clip {clip.id} references unknown asset {clip.asset_id}")
+            if not Path(asset.path).is_file():
+                raise ValidationError(
+                    f"source media is missing for clip {clip.name or clip.id}: {asset.path}",
+                    details={"clip_id": clip.id, "asset_id": asset.id, "path": asset.path},
+                )
+        duration = project.timeline_duration_seconds
+        boundaries = {0.0, duration}
+        for clip in project.clips:
+            boundaries.add(clip.timeline_start_seconds)
+            boundaries.add(clip.timeline_end_seconds)
+        ordered_bounds = sorted(boundaries)
+        plan: list[dict[str, Any]] = []
+        for start, end in zip(ordered_bounds, ordered_bounds[1:], strict=False):
+            if end - start <= 0.01:
+                continue
+            mid = (start + end) / 2
+            layers = []
+            active = [
+                c for c in project.clips
+                if c.timeline_start_seconds - 1e-9 <= mid < c.timeline_end_seconds - 1e-9
+                or (c.timeline_start_seconds <= mid and c.timeline_end_seconds > mid)
+            ]
+            for clip in sorted(active, key=lambda c: (c.track, c.timeline_start_seconds, c.id)):
+                asset = assets[clip.asset_id]
+                offset = start - clip.timeline_start_seconds
+                layers.append({
+                    "clip_id": clip.id,
+                    "path": asset.path,
+                    "source_start": clip.source_start_seconds + max(offset, 0.0),
+                    "has_audio": asset.has_audio,
+                    "effects": clip.effects,
+                    "clip_local_t": (mid - clip.timeline_start_seconds),
+                })
+            plan.append({"kind": "composite", "duration": end - start, "layers": layers})
+        return plan
+
+    def _composite_command(self, ffmpeg: str, out: Path, segment: dict[str, Any],
+                           settings: ExportSettings) -> list[str]:
+        from neuralcut.backend.effects.engine import transform_params, video_filter_chain
+
+        duration = _fmt(segment["duration"])
+        width, height = settings.width, settings.height
+        cmd = [ffmpeg, "-y", "-f", "lavfi", "-t", duration, "-i",
+               f"color=c=black:s={width}x{height}:r={settings.fps}"]
+        # inputs: 0 = black base; then per layer a video input (+ audio input
+        # or a silence input). Track indices explicitly.
+        layer_inputs: list[tuple[int, int]] = []  # (video_idx, audio_idx)
+        next_index = 1
+        for layer in segment["layers"]:
+            video_idx = next_index
+            cmd += ["-ss", _fmt(layer["source_start"]), "-i", layer["path"], "-t", duration]
+            next_index += 1
+            if layer["has_audio"]:
+                audio_idx = video_idx
+            else:
+                audio_idx = next_index
+                cmd += ["-f", "lavfi", "-t", duration, "-i", "anullsrc=r=48000:cl=stereo"]
+                next_index += 1
+            layer_inputs.append((video_idx, audio_idx))
+        if not segment["layers"]:
+            silence_idx = next_index
+            cmd += ["-f", "lavfi", "-t", duration, "-i", "anullsrc=r=48000:cl=stereo"]
+            layer_inputs = []
+        else:
+            silence_idx = -1
+
+        filters: list[str] = ["[0:v]format=yuv420p,setsar=1[acc0]"]
+        audio_labels: list[str] = []
+        current = "[acc0]"
+        for j, (layer, (video_idx, audio_idx)) in enumerate(
+            zip(segment["layers"], layer_inputs, strict=True)
+        ):
+            chain, chained = video_filter_chain(
+                layer["effects"], layer["clip_local_t"], f"[{video_idx}:v]", width, height
+            )
+            if chain:
+                filters.append(chain)
+            transform = transform_params(layer["effects"], layer["clip_local_t"])
+            sw = max(2, int(width * transform["scale"]) // 2 * 2)
+            sh = max(2, int(height * transform["scale"]) // 2 * 2)
+            filters.append(
+                f"{chained}scale={sw}:{sh},format=rgba,"
+                f"colorchannelmixer=aa={transform['opacity']:.4f}[fg{j}]"
+            )
+            target = f"[acc{j + 1}]"
+            filters.append(
+                f"{current}[fg{j}]overlay="
+                f"x='(main_w-overlay_w)/2+{transform['x']:.4f}*(main_w-overlay_w)/2'"
+                f":y='(main_h-overlay_h)/2+{transform['y']:.4f}*(main_h-overlay_h)/2'"
+                f"{target}"
+            )
+            current = target
+            audio_labels.append(f"[a{j}]")
+            filters.append(f"[{audio_idx}:a]aresample=48000{audio_labels[-1]}")
+        filters.append(f"{current}format=yuv420p,setsar=1,fps={settings.fps}[vout]")
+        if audio_labels:
+            if len(audio_labels) == 1:
+                filters.append(f"{audio_labels[0]}anull[aout]")
+            else:
+                filters.append(
+                    f"{''.join(audio_labels)}amix=inputs={len(audio_labels)}"
+                    f":duration=first:dropout_transition=0[aout]"
+                )
+        else:
+            filters.append(f"[{silence_idx}:a]anull[aout]")
+        cmd += ["-filter_complex", ";".join(filters), "-map", "[vout]", "-map", "[aout]"]
+        cmd += self._encode_args(settings)
+        cmd += [str(out)]
+        return cmd
 
     # ---- ffmpeg commands ------------------------------------------------------
 
@@ -267,6 +410,8 @@ class FFmpegRenderEngine:
 
 
 def segment_desc(segment: dict[str, Any]) -> str:
+    if segment["kind"] == "composite":
+        return f"composite segment ({len(segment.get('layers', []))} layer(s))"
     if segment["kind"] == "gap":
         return f"gap segment ({segment['duration']:.2f}s)"
     return f"clip segment {segment.get('clip_id', '')}"

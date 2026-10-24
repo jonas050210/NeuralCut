@@ -64,7 +64,7 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ## Phase 3 — Video Intelligence
 
-**Status:** not started.
+**Status:** implemented (CPU, model-free). Semantic ML detection/classification and default ASR remain opt-in future work — see acceptance notes.
 
 ### Scope
 
@@ -77,17 +77,17 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ### Acceptance criteria
 
-- [ ] Analysis runs as background jobs and reports completion without automatically editing the timeline.
-- [ ] Shot boundaries and transcript artifacts are stored, versioned, and reloadable without reprocessing unchanged media.
-- [ ] Object tracks/masks are represented in project/derived data and can be inspected in the UI.
-- [ ] Analysis can be cancelled and resumed/restarted safely.
-- [ ] CPU fallback behavior and optional GPU acceleration are documented and measured on target-class hardware.
-- [ ] Fixture tests verify expected shots/transcript timing/track persistence within documented tolerances.
-- [ ] Model licenses, download/size disclosures, and opt-in behavior are documented.
+- [x] Analysis runs as background jobs and reports completion without automatically editing the timeline. (API test asserts timeline is untouched)
+- [x] Shot boundaries and transcript artifacts are stored, versioned, and reloadable without reprocessing unchanged media. (fingerprinted sidecar store; cache test; transcript artifact stores status/engine/segments)
+- [x] Object tracks/masks are represented in project/derived data and can be inspected in the UI. (sidecar artifacts; track list + preview overlay)
+- [x] Analysis can be cancelled and resumed/restarted safely. (cooperative cancellation between steps; restart is a fresh job; cached steps make re-runs cheap — there is no mid-step resume)
+- [ ] CPU fallback behavior and optional GPU acceleration are documented and measured on target-class hardware. (CPU-only by design and documented; no GPU path exists and no Windows-laptop measurements yet)
+- [x] Fixture tests verify expected shots/transcript timing/track persistence within documented tolerances. (moving-car track/mask, scene-cut shots, speech segments; ASR *timing* is unverified because ASR is opt-in and not installed in the test environment)
+- [x] Model licenses, download/size disclosures, and opt-in behavior are documented. (no model is bundled/downloaded by default; optional faster-whisper path documents its `tiny` model download at first use)
 
 ## Phase 4 — Effects and Animation
 
-**Status:** not started.
+**Status:** implemented (schema v3, registry-driven effects, compositing renderer).
 
 ### Scope
 
@@ -99,13 +99,13 @@ Timeline, editing actions, media processing, effects, tracking, AI commands, mod
 
 ### Acceptance criteria
 
-- [ ] Users can add, reorder, disable, and remove effects on supported clips/tracks.
-- [ ] Keyframes can be created/edited/deleted and persist exactly through save/load and undo/redo.
-- [ ] Glow/bloom and the initial effect set render deterministically in export fixtures.
-- [ ] Invalid effect parameters are rejected with actionable UI/API errors.
-- [ ] Preview degradation/fallback is explicit when real-time rendering is not feasible.
-- [ ] Performance is measured on a Windows laptop without requiring a discrete NVIDIA GPU.
-- [ ] Effect data model and render semantics are documented.
+- [x] Users can add, reorder, disable, and remove effects on supported clips/tracks. (per-clip chains; tracks supported via clips on them)
+- [x] Keyframes can be created/edited/deleted and persist exactly through save/load and undo/redo. (roundtrip + undo/redo tests)
+- [x] Glow/bloom and the initial effect set render deterministically in export fixtures. (pixel-verified glow spread, brightness, compositing renders)
+- [x] Invalid effect parameters are rejected with actionable UI/API errors. (registry ranges; API returns 400 with range details)
+- [x] Preview degradation/fallback is explicit when real-time rendering is not feasible. (edited preview is labelled an approximation and uses CSS equivalents)
+- [ ] Performance is measured on a Windows laptop without requiring a discrete NVIDIA GPU. (no GPU is used; physical-laptop measurements still pending)
+- [x] Effect data model and render semantics are documented. (`docs/DATA_MODELS.md`, D-022)
 
 ## Phase 5 — AI Editing Agent
 

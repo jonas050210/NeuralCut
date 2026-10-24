@@ -35,7 +35,7 @@ def system_diagnostics(request: Request) -> dict:
     return {
         "service": "neuralcut",
         "version": app_version,
-        "phase": "2 — Editing Core",
+        "phase": "4 — Effects and Animation (Phase 3 intelligence included)",
         "platform": sys.platform,
         "python": sys.version,
         "pid": os.getpid(),
@@ -61,6 +61,12 @@ def system_diagnostics(request: Request) -> dict:
             "tracked": len(container.job_manager.list()),
         },
         "media": container.media.status(),
+        "intelligence": {
+            "analysis_store": str(container.analysis_service.store.directory),
+            "detector": "motion-background-subtraction (CPU, no model download)",
+            "transcription": "optional faster-whisper when models.enabled and installed",
+            "effects": ["transform", "color", "blur", "glow", "bloom"],
+        },
         "gpu": container.gpu.status(),
         "models": container.models.status(),
         "optional_tools": {

@@ -309,6 +309,113 @@ class TimelineService:
         mutated.clips = [c for c in mutated.clips if c.id != clip_id]
         return self._commit(project, mutated)
 
+    # ---- effect operations (Phase 4) -------------------------------------------
+
+    def _effect(self, clip: ProjectClip, effect_id: str):  # noqa: ANN202
+
+        for effect in clip.effects:
+            if effect.id == effect_id:
+                return effect
+        raise NotFoundError(
+            f"effect not found: {effect_id}",
+            details={"clip_id": clip.id, "effect_id": effect_id},
+        )
+
+    def add_effect(self, clip_id: str, *, type: str, params: dict | None = None,
+                   keyframes: dict | None = None, preset: str | None = None):
+        from neuralcut.backend.effects.engine import PRESETS, validate_effect
+        from neuralcut.backend.projects.model import ClipEffect, EffectKeyframe
+
+        project = self._project()
+        self._clip(project, clip_id)
+        if preset is not None:
+            if preset not in PRESETS:
+                raise ValidationError(
+                    f"unknown effect preset: {preset}",
+                    details={"known_presets": sorted(PRESETS)},
+                )
+            preset_def = PRESETS[preset]
+            type = preset_def["type"]  # noqa: A002 - API field name
+            params = {**(preset_def.get("params") or {}), **(params or {})}
+            keyframes = keyframes if keyframes is not None else preset_def.get("keyframes")
+        parsed_keyframes = {}
+        for prop, frames in (keyframes or {}).items():
+            parsed_keyframes[prop] = [
+                EffectKeyframe.model_validate(f) if isinstance(f, dict) else f for f in frames
+            ]
+        validated = validate_effect(type, params or {}, parsed_keyframes)
+        effect = ClipEffect(
+            id=uuid.uuid4().hex, type=type, params=validated, keyframes=parsed_keyframes
+        )
+        mutated = Project.model_validate(self._snapshot(project))
+        self._clip(mutated, clip_id).effects.append(effect)
+        self._commit(project, mutated)
+        return self._effect(self._clip(self._projects.get(), clip_id), effect.id)
+
+    def update_effect(self, clip_id: str, effect_id: str, *, params: dict | None = None,
+                      enabled: bool | None = None):
+        from neuralcut.backend.effects.engine import validate_effect
+
+        project = self._project()
+        current = self._effect(self._clip(project, clip_id), effect_id)
+        merged = {**current.params, **(params or {})}
+        validated = validate_effect(current.type, merged, current.keyframes)
+        mutated = Project.model_validate(self._snapshot(project))
+        effect = self._effect(self._clip(mutated, clip_id), effect_id)
+        effect.params = validated
+        if enabled is not None:
+            effect.enabled = enabled
+        self._commit(project, mutated)
+        return self._effect(self._clip(self._projects.get(), clip_id), effect_id)
+
+    def remove_effect(self, clip_id: str, effect_id: str) -> Project:
+        project = self._project()
+        self._effect(self._clip(project, clip_id), effect_id)
+        mutated = Project.model_validate(self._snapshot(project))
+        clip = self._clip(mutated, clip_id)
+        clip.effects = [e for e in clip.effects if e.id != effect_id]
+        return self._commit(project, mutated)
+
+    def move_effect(self, clip_id: str, effect_id: str, *, direction: int):
+        """Move an effect one step in the chain (direction -1 up / +1 down)."""
+        if direction not in (-1, 1):
+            raise ValidationError("direction must be -1 or +1")
+        project = self._project()
+        clip = self._clip(project, clip_id)
+        self._effect(clip, effect_id)
+        index = next(i for i, e in enumerate(clip.effects) if e.id == effect_id)
+        target = index + direction
+        if target < 0 or target >= len(clip.effects):
+            raise ValidationError("effect is already at the edge of the chain")
+        mutated = Project.model_validate(self._snapshot(project))
+        mclip = self._clip(mutated, clip_id)
+        mclip.effects[index], mclip.effects[target] = mclip.effects[target], mclip.effects[index]
+        self._commit(project, mutated)
+        return self._effect(self._clip(self._projects.get(), clip_id), effect_id)
+
+    def set_keyframes(self, clip_id: str, effect_id: str, *, property: str,
+                      keyframes: list):
+        """Replace the keyframe list for one property (empty list clears it)."""
+        from neuralcut.backend.effects.engine import validate_effect
+        from neuralcut.backend.projects.model import EffectKeyframe
+
+        project = self._project()
+        current = self._effect(self._clip(project, clip_id), effect_id)
+        parsed = [
+            EffectKeyframe.model_validate(f) if isinstance(f, dict) else f for f in keyframes
+        ]
+        candidate = dict(current.keyframes)
+        if parsed:
+            candidate[property] = parsed
+        else:
+            candidate.pop(property, None)
+        validate_effect(current.type, current.params, candidate)
+        mutated = Project.model_validate(self._snapshot(project))
+        effect = self._effect(self._clip(mutated, clip_id), effect_id)
+        effect.keyframes = candidate
+        self._commit(project, mutated)
+        return self._effect(self._clip(self._projects.get(), clip_id), effect_id)
+
     # ---- views ---------------------------------------------------------------------
 
     def timeline(self) -> dict[str, Any]:

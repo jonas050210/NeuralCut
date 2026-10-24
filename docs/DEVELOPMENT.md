@@ -258,3 +258,10 @@ Import probing and export require ffmpeg:
 Rendering writes temporary segment files under `<data_dir>/render-tmp/` and deletes them after each export. Exports always re-encode (libx264/AAC) and are verified by probing the finished file; a duration mismatch fails the job instead of reporting success.
 
 For tests, `neuralcut/tests/media_helpers.py` generates tiny synthetic videos with ffmpeg lavfi sources. Tests that need a real binary skip when none is available; installing the optional `imageio-ffmpeg` pip package into the dev venv is a convenient way to get one locally (it is not a runtime dependency).
+
+## Phases 3–4 notes
+
+- **Analysis artifacts** are written to `<data_dir>/analysis/<fingerprint>.json`. Deleting that folder is safe; artifacts regenerate on demand. The Analyze button reuses cached artifacts when the source fingerprint is unchanged; `POST .../analyze` with `{"force": true}` forces recomputation.
+- **Motion detection** is pure Python on 96×54 grayscale frames sampled at 5fps (max 300 frames). It needs no model, no GPU, and no network — and it only finds *moving* regions (see `docs/KNOWN_ISSUES.md`).
+- **Optional transcription:** `pip install faster-whisper` plus `"models": {"enabled": true}` in the config enables CPU ASR (the `tiny` model downloads on first use — that is the only model download in the app, and it is opt-in twice over). Without it, transcript artifacts report `unavailable` and speech segments still work.
+- **Effects in exports:** any clip with effects, or any cross-track overlap, switches the renderer to the compositing path (atomic intervals, keyframes at interval midpoints). Plain single-track timelines keep the faster Phase 2 path. Both paths verify output duration by probing.

@@ -43,6 +43,11 @@ class Container:
 
         self.render_engine = FFmpegRenderEngine(self.media)
         self.timeline_service = TimelineService(self.project_service, self.media)
+        from neuralcut.backend.intelligence.analysis import AnalysisService, AnalysisStore
+
+        self.analysis_service = AnalysisService(
+            AnalysisStore(context.data_dir / "analysis"), self.media, self.settings
+        )
         self.models = ModelManagerAdapter(self)
         self.gpu = GpuManagerAdapter(self)
         self.evaluation = EvaluationAdapter(self)

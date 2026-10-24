@@ -36,6 +36,8 @@ The Python suite lives in `neuralcut/tests/` and is configured by `pyproject.tom
 | Editing | `test_editing.py` | Import/add/append, move/trim/split/remove, overlap & range validation, exact undo/redo restoration, asset-removal guard, missing media, persistence roundtrip, real ffprobe/ffmpeg probing |
 | Rendering | `test_rendering.py` | Segment+gap export with probe-verified duration, empty/missing-media/non-MP4 errors, cancellation, and full editing+render API flow (incl. HTTP Range streaming) using generated videos |
 | Media helpers | `tests/media_helpers.py` | Generates short synthetic videos with ffmpeg lavfi (color + sine audio); never personal media. Render/probe tests skip cleanly when no ffmpeg binary is available |
+| Intelligence | `test_intelligence.py` | Moving-car detection/tracking (displacement, direction, mask coverage at the car's expected position), RLE roundtrip, scene-cut shots, speech segments, honest transcript-unavailable, fingerprint cache + invalidation, cancellation, full analysis API flow (timeline untouched) |
+| Effects | `test_effects.py` | Keyframe linear/hold evaluation, registry validation (incl. per-parameter keyframe ranges), effect CRUD/preset/reorder/disable, exact persistence + undo/redo, v2→v3 migration, pixel-verified renders (brightness Δ, glow spread outside a bright square, bloom, two-track compositing, opacity blending), effects API flow |
 
 API tests use `httpx.ASGITransport`, so they exercise FastAPI routing/serialization without needing a fixed TCP port.
 
@@ -123,6 +125,14 @@ The Phase 1 development environment was Linux without Rust. Before calling the W
    - confirm the window loads and closing it stops the Python backend.
 
 Record Windows version, Python version, commands, and failures in the PR/issue rather than silently adjusting docs.
+
+## Recorded Phase 3–4 results (2026-10-24, Linux dev environment)
+
+- `pytest`: **56 passed** (all Phase 1–2 tests plus intelligence/effects suites). Ruff and `node --check` clean.
+- Moving-car fixture: the synthetic car (red box crossing a static scene) yields one track with displacement ≈ 0.70 of frame width, ≥5 frames, correct left→right direction, and a mask covering the car's expected centre pixel.
+- Compositing/effects fixtures verify rendered pixels, not just durations: brightness raises frame mean, glow brightens pixels *outside* a bright square, a scaled red top clip covers the centre while corners stay blue, and 0.5 opacity blends measurably.
+- Live smoke test: analysis job on the car video completed (1 track, displacement 0.70); a two-track project with a `fade-in` preset and keyframed glow saved and rendered to a probe-verified 3.04s composited MP4.
+- Not verified: ASR transcription (optional engine not installed), semantic detection (not implemented by design), physical Windows laptop performance/interactive flow.
 
 ## Recorded Phase 2 results (2026-10-24, Linux dev environment)
 

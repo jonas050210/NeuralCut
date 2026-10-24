@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NeuralCut — Editing Core (Phase 2)</title>
+<title>NeuralCut — Video Intelligence & Effects (Phases 3–4)</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
   <header class="shell-header">
-    <div class="brand">NeuralCut<span class="phase"> · Phase 2: Editing Core</span></div>
+    <div class="brand">NeuralCut<span class="phase"> · Phases 3–4: Intelligence &amp; Effects</span></div>
     <div class="status-pill" id="status-pill">checking backend…</div>
   </header>
 
@@ -110,7 +110,11 @@
         <div class="preview-grid">
           <div>
             <h4>Source preview <span class="muted">— original file, unedited</span></h4>
-            <video id="source-video" controls preload="metadata"></video>
+            <div class="video-wrap">
+              <video id="source-video" controls preload="metadata"></video>
+              <canvas id="track-overlay" width="640" height="360"></canvas>
+            </div>
+            <p class="muted">Object-track boxes (from Analysis) are drawn over this source preview.</p>
             <div class="field">
               <label>Source asset</label>
               <select id="sel-source-asset"></select>
@@ -129,7 +133,17 @@
       </div>
 
       <div class="card">
-        <h3>3 · Timeline</h3>
+        <h3>3 · Analysis (Phase 3 — background job, never edits the timeline)</h3>
+        <p class="muted">Motion-based object detection/tracking runs on CPU without any model download. It finds <em>moving</em> regions; it does not semantically classify them. Transcription needs the optional ASR engine — without it you still get shots, speech segments, and retrieval captions.</p>
+        <div class="toolbar">
+          <button class="btn" id="btn-analyze-selected" type="button">Analyze selected source asset</button>
+          <span id="analysis-status" class="muted">No analysis loaded.</span>
+        </div>
+        <div id="analysis-results"></div>
+      </div>
+
+      <div class="card">
+        <h3>4 · Timeline</h3>
         <div class="toolbar">
           <button class="btn" id="btn-undo" type="button">↩ Undo</button>
           <button class="btn" id="btn-redo" type="button">↪ Redo</button>
@@ -141,7 +155,7 @@
       </div>
 
       <div class="card">
-        <h3>4 · Export (FFmpeg, background job)</h3>
+        <h3>5 · Export (FFmpeg, background job)</h3>
         <form id="form-export">
           <div class="field">
             <label>Output .mp4 path</label>
@@ -208,7 +222,7 @@
   </main>
 
   <footer class="shell-footer">
-    <span>NeuralCut 0.2.0 · local-first · no cloud · models optional</span>
+    <span>NeuralCut 0.4.0 · local-first · no cloud · models optional</span>
     <span id="api-url" class="muted"></span>
   </footer>
 
