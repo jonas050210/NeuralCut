@@ -27,6 +27,20 @@ The long-term experience is an editor that can:
 - Users who want AI help without uploading footage to cloud services.
 - Power users who need understandable project data, repeatable operations, and control over automated changes.
 
+## Phase 2 scope (current)
+
+Phase 2 adds the editing core on top of the foundation:
+
+- Schema-v2 timeline model with a v1→v2 migration (see `DATA_MODELS.md`).
+- Local media import/probing (ffprobe/ffmpeg), asset metadata in the project.
+- Deterministic clip operations — add, move, trim, split, remove — with same-track overlap and source-range validation.
+- Snapshot-based undo/redo for all editing operations.
+- Source preview (range-streamed original file) and an in-browser edited-timeline preview, clearly distinguished.
+- Deterministic FFmpeg export (timeline order, trims, gap segments, silence for audio-less clips) as a cancellable background job with output-duration verification.
+- Automated tests using short generated videos.
+
+Phase 2 explicitly excludes object tracking, advanced effects, AI chat commands, model training, and self-improvement.
+
 ## Phase 1 scope
 
 Phase 1 builds the foundation required by all later phases:
@@ -41,12 +55,12 @@ Phase 1 builds the foundation required by all later phases:
 - Extension points for media, models, GPU scheduling, evaluation, and self-improvement.
 - Tests, scripts, CI definition, and project documentation.
 
-## Explicit non-goals for Phase 1
+## Explicit non-goals for Phase 1 (delivered in Phase 2 where noted)
 
-Phase 1 does not implement:
+Phase 1 did not implement (Phase 2 has since added the timeline items):
 
-- Timeline UI or editing operations.
-- Media import, transcoding, preview, render, or export.
+- Timeline UI or editing operations. *(Phase 2: implemented)*
+- Media import, transcoding, preview, render, or export. *(Phase 2: implemented, MP4 export)*
 - Transcription, shot detection, embeddings, object detection/tracking, or masks.
 - Effects, keyframes, compositing, glow, or bloom.
 - AI chat, planning, tool calling, or model inference.
@@ -55,8 +69,8 @@ Phase 1 does not implement:
 
 ## Long-term roadmap summary
 
-1. **Foundation** — architecture, infrastructure, persistence, docs, tests. *(current)*
-2. **Editing Core** — timeline, clip operations, undo/redo, rendering, export.
+1. **Foundation** — architecture, infrastructure, persistence, docs, tests. *(done)*
+2. **Editing Core** — timeline, clip operations, undo/redo, rendering, export. *(current — implemented; Windows-laptop verification pending)*
 3. **Video Intelligence** — analysis, object detection, tracking, masks.
 4. **Effects and Animation** — keyframes, compositing, glow, bloom, effect chains.
 5. **AI Editing Agent** — chat, model routing, validated tool calls, controlled execution.

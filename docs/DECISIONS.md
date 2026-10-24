@@ -123,3 +123,35 @@ This log records important Phase 1 decisions, reasons, consequences, and what wo
 **Reason:** Research shows most early gains come from tools, prompts, retrieval, and measurable failure fixes. Training without a trustworthy evaluator risks regressions and reward hacking.
 
 **Consequence:** Phase 6 acceptance requires sandbox gates and rollback before any candidate can replace an incumbent model/adapter.
+
+## D-015 — Custom schema-v2 timeline model with raw-dict migrations
+
+**Decision:** Phase 2 keeps the custom `.neuralcut` JSON model (now schema v2) instead of adopting OpenTimelineIO/MLT as the canonical format. Migrations operate on the raw JSON dict before Pydantic validation.
+
+**Reason:** The Phase 2 operations (place/trim/split/move on tracks) map directly onto a small custom model; raw-dict migration preserves renamed v1 fields (`start_seconds` → `source_start_seconds`) that model-first migration would silently drop. OTIO remains a possible future interchange export.
+
+**Consequence:** v1 clips are placed sequentially per track on migration. Any future schema change must add a raw migration + old-version load test.
+
+## D-016 — Snapshot-based undo/redo
+
+**Decision:** Undo/redo stores full-project JSON snapshots (max 100) in `TimelineService` instead of inverse commands per operation.
+
+**Reason:** Project documents are small; snapshots guarantee exact state restoration for every present and future operation without hand-written inverses.
+
+**Consequence:** History is memory-only, resets on project switch, and is not persisted in the project file. Memory cost is negligible at current project sizes; revisit if projects grow large derived data (they must not — derived data belongs in sidecars).
+
+## D-017 — FFmpeg segment-and-concat rendering
+
+**Decision:** Rendering uses FFmpeg directly: each timeline segment (clip range or black/silent gap) is encoded with identical parameters (libx264/AAC, fixed size/fps, yuv420p), then concatenated with the concat demuxer (stream copy), then probed to verify duration within tolerance.
+
+**Reason:** No new Python dependency; deterministic, explainable commands; per-segment progress and hard cancellation by terminating the subprocess; identical segment parameters make stream-copy concat reliable.
+
+**Consequence:** Export is MP4-only and re-encodes every segment (no smart rendering). Cross-track overlapping clips are rejected at export (no compositing yet). FFmpeg is an external prerequisite, resolved via config/PATH/optional `imageio-ffmpeg`.
+
+## D-018 — Browser edited-preview is an approximation; source preview is range-streamed
+
+**Decision:** The source preview streams the original file with HTTP Range support. The edited preview plays source ranges back-to-back in a `<video>` element and is explicitly labelled an approximation; only the FFmpeg export is the final edited output.
+
+**Reason:** Real-time rendered preview (proxies/engine) is a larger system; sequential playback gives immediate feedback with zero extra dependencies while keeping the distinction honest in the UI.
+
+**Consequence:** Edited preview can show small seams at clip boundaries and does not render gaps as timed black (it skips to the next clip). Frame-accurate rendered preview is future work if needed.

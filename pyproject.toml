@@ -1,7 +1,7 @@
 [project]
 name = "neuralcut"
-version = "0.1.0"
-description = "NeuralCut — local-first AI video editor for Windows. Phase 1: foundation only (no timeline, no AI execution)."
+version = "0.2.0"
+description = "NeuralCut — local-first AI video editor for Windows. Phase 2: editing core (timeline, undo/redo, FFmpeg export; no AI execution)."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "NeuralCut contributors" }]

@@ -81,6 +81,25 @@ Job functions must poll `cancel_event`, validate payload values, and avoid mutat
 - Health, diagnostics, log tail, and effective config.
 - Diagnostics is the place to expose safe capability/status information for support and UI capability gating.
 
+### `neuralcut/backend/api/v1/editing.py` (Phase 2)
+
+- Timeline, asset import/remove, clip add/patch/split/delete, undo/redo, render submission, and range-streamed media content endpoints.
+- Handlers delegate every mutation to `TimelineService`; they never touch `project.clips` directly.
+- Render submission snapshots the project into the job payload so later edits cannot affect a running export.
+
+### `neuralcut/backend/editing/service.py` (Phase 2)
+
+- `TimelineService`: the single mutation path for timeline state.
+- Validates each mutated project with the Pydantic model before committing; a rejected edit changes nothing.
+- Snapshot undo/redo (max 100), in-memory, reset on project switch.
+- Missing source files, unknown ids, out-of-range trims, and overlaps raise typed errors.
+
+### `neuralcut/backend/rendering/ffmpeg.py` (Phase 2)
+
+- `FFmpegRenderEngine`: segment-and-concat export (see `docs/ARCHITECTURE.md`), progress callbacks, subprocess-terminating cancellation, output-duration verification.
+- `register_render_jobs()`: binds the `render` job type to the container.
+- Raises `RenderError`/`RenderCancelled` (job failures surface these messages).
+
 ### `neuralcut/backend/api/v1/projects.py`
 
 - Project create/open/current/save/close and recent list endpoints.
@@ -94,12 +113,12 @@ Job functions must poll `cancel_event`, validate payload values, and avoid mutat
 
 ### `neuralcut/backend/projects/model.py`
 
-- Canonical Phase 1 project schema and migration registry.
+- Canonical project schema (currently v2) and raw-dict migration registry (`RAW_MIGRATIONS`); semantics in `docs/DATA_MODELS.md`.
 - When schema changes:
   1. Increment `PROJECT_SCHEMA_VERSION`.
-  2. Add a migration with `@register_migration(old, new)`.
-  3. Add load/migration tests with a real old-version fixture.
-  4. Document the change in `CHANGELOG.md`.
+  2. Add a raw-dict migration with `@register_migration(old, new)`.
+  3. Add load/migration tests with a real old-version document.
+  4. Document the change in `CHANGELOG.md` and `DECISIONS.md`.
 
 ### `neuralcut/backend/projects/store.py`
 
@@ -114,17 +133,15 @@ Job functions must poll `cancel_event`, validate payload values, and avoid mutat
 
 ## Integration adapters
 
-### `integration/media.py` — planned Phase 2/3
+### `integration/media.py` — probing implemented (Phase 2)
 
-Future responsibilities:
+Implemented: binary resolution (settings → `PATH` → optional `imageio-ffmpeg`),
+ffprobe-JSON probing with an `ffmpeg -i` parsing fallback, supported-format
+validation, and typed errors for missing/unsupported/unreadable files.
 
-- Resolve/version-check media binaries.
-- Probe/import assets.
-- Generate proxies/thumbnails/waveforms.
-- Coordinate analysis inputs and render/export commands.
-- Translate tool failures into typed errors and job progress.
-
-Do not call FFmpeg synchronously from API handlers for long operations; submit jobs.
+Future responsibilities: proxies/thumbnails/waveforms and analysis handoff
+(Phase 3). Do not call FFmpeg synchronously from API handlers for long
+operations; submit jobs (rendering already follows this rule).
 
 ### `integration/models.py` — planned Phase 3/5
 

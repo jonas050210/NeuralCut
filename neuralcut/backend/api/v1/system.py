@@ -35,7 +35,7 @@ def system_diagnostics(request: Request) -> dict:
     return {
         "service": "neuralcut",
         "version": app_version,
-        "phase": "1 — Foundation",
+        "phase": "2 — Editing Core",
         "platform": sys.platform,
         "python": sys.version,
         "pid": os.getpid(),

@@ -92,7 +92,7 @@ class NeuralCutSettings(BaseSettings):
     """Application settings with validation and multiple sources."""
 
     app_name: str = "NeuralCut"
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     debug: bool = False
     host: str = Field(default="127.0.0.1", description="Backend bind host")
     port: int = Field(default=8765, ge=1024, le=65535, description="Backend bind port")

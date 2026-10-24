@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NeuralCut — Foundation (Phase 1)</title>
+<title>NeuralCut — Editing Core (Phase 2)</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
   <header class="shell-header">
-    <div class="brand">NeuralCut<span class="phase"> · Phase 1: Foundation</span></div>
+    <div class="brand">NeuralCut<span class="phase"> · Phase 2: Editing Core</span></div>
     <div class="status-pill" id="status-pill">checking backend…</div>
   </header>
 
@@ -16,6 +16,7 @@
     <a href="#dashboard" class="nav-link" data-nav="dashboard">Dashboard</a>
     <a href="#projects" class="nav-link" data-nav="projects">Projects</a>
     <a href="#project" class="nav-link" data-nav="project">Current Project</a>
+    <a href="#timeline" class="nav-link" data-nav="timeline">Timeline</a>
     <a href="#jobs" class="nav-link" data-nav="jobs">Background Jobs</a>
     <a href="#settings" class="nav-link" data-nav="settings">Settings</a>
     <a href="#logs" class="nav-link" data-nav="logs">Logs</a>
@@ -79,12 +80,80 @@
     <section id="view-project" class="view">
       <h2>Project <span id="project-name"></span></h2>
       <div class="card">
-        <p class="muted">Phase 1 stores and validates projects. Timeline rendering is a Phase 2 extension point.</p>
+        <p class="muted">Project summary. Use the Timeline view to import media, edit clips, preview, and export.</p>
         <button class="btn" id="btn-refresh-project">Refresh</button>
         <button class="btn" id="btn-save-project">Save</button>
         <p id="project-msg" class="msg"></p>
       </div>
       <pre id="project-json" class="code">-</pre>
+    </section>
+
+    <!-- Timeline / Editing -->
+    <section id="view-timeline" class="view">
+      <h2>Timeline <span id="timeline-duration" class="muted"></span></h2>
+      <p id="timeline-msg" class="msg"></p>
+
+      <div class="card">
+        <h3>1 · Import local media</h3>
+        <form id="form-import">
+          <div class="field">
+            <label>Local video file path (on the machine running NeuralCut)</label>
+            <input type="text" name="path" required placeholder="C:\Videos\clip.mp4">
+          </div>
+          <button class="btn" type="submit">Import &amp; probe</button>
+        </form>
+        <div id="asset-list" class="list empty">No project open.</div>
+      </div>
+
+      <div class="card">
+        <h3>2 · Preview</h3>
+        <div class="preview-grid">
+          <div>
+            <h4>Source preview <span class="muted">— original file, unedited</span></h4>
+            <video id="source-video" controls preload="metadata"></video>
+            <div class="field">
+              <label>Source asset</label>
+              <select id="sel-source-asset"></select>
+            </div>
+          </div>
+          <div>
+            <h4>Edited timeline preview <span class="muted">— in-browser approximation; Export renders the real file</span></h4>
+            <video id="edited-video" controls preload="metadata"></video>
+            <div class="toolbar">
+              <button class="btn" id="btn-edited-play" type="button">▶ Play timeline</button>
+              <span id="edited-time" class="muted">0.0s / 0.0s</span>
+            </div>
+            <input type="range" id="edited-seek" min="0" max="100" step="0.1" value="0" style="width:100%">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>3 · Timeline</h3>
+        <div class="toolbar">
+          <button class="btn" id="btn-undo" type="button">↩ Undo</button>
+          <button class="btn" id="btn-redo" type="button">↪ Redo</button>
+          <button class="btn" id="btn-save-timeline" type="button">Save project</button>
+          <span class="muted">Drag a clip left/right to move it. Click a clip to edit it below.</span>
+        </div>
+        <div id="timeline-tracks"></div>
+        <div id="clip-editor"></div>
+      </div>
+
+      <div class="card">
+        <h3>4 · Export (FFmpeg, background job)</h3>
+        <form id="form-export">
+          <div class="field">
+            <label>Output .mp4 path</label>
+            <input type="text" name="output_path" required placeholder="C:\Videos\export.mp4">
+          </div>
+          <div class="field"><label>Width</label><input type="number" name="width" value="1280" min="16" max="7680"></div>
+          <div class="field"><label>Height</label><input type="number" name="height" value="720" min="16" max="4320"></div>
+          <div class="field"><label>FPS</label><input type="number" name="fps" value="30" min="1" max="240"></div>
+          <button class="btn" type="submit">Export timeline</button>
+        </form>
+        <div id="export-job"></div>
+      </div>
     </section>
 
     <!-- Jobs -->
@@ -139,7 +208,7 @@
   </main>
 
   <footer class="shell-footer">
-    <span>NeuralCut 0.1.0 · local-first · no cloud · models optional</span>
+    <span>NeuralCut 0.2.0 · local-first · no cloud · models optional</span>
     <span id="api-url" class="muted"></span>
   </footer>
 

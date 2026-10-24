@@ -1,6 +1,6 @@
 # Self-Improvement and Evaluation Plan
 
-This document describes the planned Phase 6 system. **Phase 1 does not train models, collect learning feedback, run autonomous experiments, or change its own behavior.** It only provides `EvaluationAdapter` and `SelfImprovementAdapter` contracts that report unavailable.
+This document describes the planned Phase 6 system. **NeuralCut does not train models, collect learning feedback, run autonomous experiments, or change its own behavior.** It only provides `EvaluationAdapter` and `SelfImprovementAdapter` contracts that report unavailable. Phase 2 added one prerequisite this plan relies on: deterministic, verifiable operations (timeline invariants and probe-verified renders) that future deterministic graders can check. No evaluation or feedback system is implemented yet.
 
 ## Goal
 

@@ -32,7 +32,10 @@ The Python suite lives in `neuralcut/tests/` and is configured by `pyproject.tom
 | Projects | `test_projects.py` | Save/load roundtrip, validation, clip range, invalid JSON, future schema, migration registry, service lifecycle/recent callback, duplicate/blank names |
 | Jobs | `test_jobs.py` | Completion/progress, typed failure details, cooperative cancellation, unknown/reserved payload errors, cancel-completed conflict |
 | API | `test_api.py` | Health/diagnostics/config, project lifecycle, API validation, demo job lifecycle, job/log errors, frontend serving, unknown API JSON 404 |
-| Adapters | `test_integration_adapters.py` | Phase 1 adapters report unavailable and raise `UnavailableError` for future operations |
+| Adapters | `test_integration_adapters.py` | AI/evaluation/self-improvement adapters still unavailable; media adapter status/probe errors are real in Phase 2 |
+| Editing | `test_editing.py` | Import/add/append, move/trim/split/remove, overlap & range validation, exact undo/redo restoration, asset-removal guard, missing media, persistence roundtrip, real ffprobe/ffmpeg probing |
+| Rendering | `test_rendering.py` | Segment+gap export with probe-verified duration, empty/missing-media/non-MP4 errors, cancellation, and full editing+render API flow (incl. HTTP Range streaming) using generated videos |
+| Media helpers | `tests/media_helpers.py` | Generates short synthetic videos with ffmpeg lavfi (color + sine audio); never personal media. Render/probe tests skip cleanly when no ffmpeg binary is available |
 
 API tests use `httpx.ASGITransport`, so they exercise FastAPI routing/serialization without needing a fixed TCP port.
 
@@ -121,6 +124,24 @@ The Phase 1 development environment was Linux without Rust. Before calling the W
 
 Record Windows version, Python version, commands, and failures in the PR/issue rather than silently adjusting docs.
 
+## Recorded Phase 2 results (2026-10-24, Linux dev environment)
+
+- `pytest`: **42 passed** (Phase 1 suite plus editing/rendering/migration tests).
+- `ruff check neuralcut`: clean. `node --check` on the frontend: clean.
+- Live smoke test against the real server: create project → import generated 3s video (probed 3.0s, 320×240) → add clip → split → undo → save → submit render job → completed with expected 2.0s / probed 2.02s output; `ffmpeg -i` confirms H.264 + AAC streams. Range request returned `206` with a correct `Content-Range`.
+- The sandbox has no system ffmpeg; tests used the optional `imageio-ffmpeg` binary (ffmpeg 7.0.2) installed only into the local `.venv`. It is **not** a project dependency — end users install ffmpeg normally. On machines without any ffmpeg, render/probe tests skip instead of failing.
+
+## Manual Phase 2 UI checklist (in addition to the Phase 1 checklist)
+
+1. Create/open a project, go to **Timeline**.
+2. Import a short video by full local path; confirm duration/resolution/codec appear.
+3. Add it to the timeline; drag the clip and confirm its start time changes; select it and trim source in/out numerically.
+4. Split the clip at its midpoint; confirm two clips. Undo → one clip; redo → two clips.
+5. Play **Source preview** and seek; play **Edited timeline preview** and confirm it follows the clip order (labelled as approximation).
+6. Save the project, restart the backend, reopen, and confirm the timeline is unchanged.
+7. Export to an `.mp4` path; watch progress in the Timeline view or Background Jobs; open the exported file in a player and confirm duration/order.
+8. Move the source file away, reload the timeline, and confirm the asset is marked missing and export fails with a clear message.
+
 ## CI
 
 `.github/workflows/ci.yml` runs pytest and the frontend syntax check on:
@@ -129,7 +150,7 @@ Record Windows version, Python version, commands, and failures in the PR/issue r
 - Windows latest.
 - Python 3.11 and 3.12.
 
-CI does not yet compile Tauri/Rust or test media/AI features because those are not implemented Phase 1 systems.
+CI runs the full suite including editing tests; rendering/probing tests use an ffmpeg binary when the runner provides one and skip otherwise (GitHub Ubuntu/Windows runners normally include ffmpeg). CI does not yet compile Tauri/Rust or test AI features (not implemented). Windows PowerShell script execution and the interactive Phase 2 browser flow still require a physical Windows laptop run — record results in the PR.
 
 **Recorded Phase 1 CI result (2026-10-24):** the initial pull-request CI run passed all four jobs (Ubuntu/Windows × Python 3.11/3.12). This verifies the Python test suite and frontend syntax check on Windows runners; it does not by itself verify the PowerShell setup/run scripts, interactive browser flow, or Tauri build on a physical Windows laptop.
 

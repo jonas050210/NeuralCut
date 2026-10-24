@@ -8,6 +8,7 @@ container instance is created in ``neuralcut.main`` and passed to
 
 from __future__ import annotations
 
+from neuralcut.backend.editing.service import TimelineService
 from neuralcut.backend.integration.evaluation import EvaluationAdapter
 from neuralcut.backend.integration.gpu import GpuManagerAdapter
 from neuralcut.backend.integration.media import MediaProcessorAdapter
@@ -35,9 +36,13 @@ class Container:
             on_recent_changed=self._persist_recent_projects,
         )
 
-        # Integration adapters — extension points. All are disabled/no-op in
-        # Phase 1; they define the contract later phases implement.
+        # Media/editing/rendering are real Phase 2 systems; AI adapters stay
+        # lazy/unavailable until their phases.
         self.media = MediaProcessorAdapter(self)
+        from neuralcut.backend.rendering.ffmpeg import FFmpegRenderEngine
+
+        self.render_engine = FFmpegRenderEngine(self.media)
+        self.timeline_service = TimelineService(self.project_service, self.media)
         self.models = ModelManagerAdapter(self)
         self.gpu = GpuManagerAdapter(self)
         self.evaluation = EvaluationAdapter(self)

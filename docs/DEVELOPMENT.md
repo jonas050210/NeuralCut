@@ -15,7 +15,7 @@ NeuralCut targets Windows first. The Phase 1 Python/web foundation also runs on 
 - Node.js 22: frontend syntax check and Tauri CLI.
 - Rust stable + Cargo: Tauri shell development.
 - Windows: Microsoft C++ Build Tools and WebView2 Runtime for Tauri.
-- FFmpeg/ffprobe: not required in Phase 1; diagnostics reports whether they are on `PATH` for future phases.
+- FFmpeg/ffprobe: required for Phase 2 media import/export (see the Phase 2 FFmpeg section at the end of this file); the app runs without them but import/export report unavailable.
 
 No NVIDIA GPU, CUDA toolkit, model files, or cloud account is required.
 
@@ -237,7 +237,7 @@ Project files are JSON; inspect a copy in a text editor. Do not edit the only co
 
 ### FFmpeg/model/GPU status says unavailable
 
-That is expected in Phase 1. FFmpeg detection only informs future work; media/model execution is not implemented and models are disabled by default.
+For models/GPU/evaluation that is expected — they are later phases and models are disabled by default. For media it means ffmpeg was not found: install it or set `media.ffmpeg_path` (see the Phase 2 FFmpeg section below), then restart and re-check diagnostics (`probe_mode` should be `ffprobe` or `ffmpeg`).
 
 ## Code quality
 
@@ -245,3 +245,16 @@ That is expected in Phase 1. FFmpeg detection only informs future work; media/mo
 - Keep public Python functions typed.
 - Run `node --check` for frontend JS.
 - Optional local linting with Ruff is configured in `pyproject.toml`, but Ruff is not a pinned Phase 1 dependency.
+
+## Phase 2: FFmpeg prerequisite
+
+Import probing and export require ffmpeg:
+
+- **Windows:** `winget install Gyan.FFmpeg` or `choco install ffmpeg`, or download a static build and add it to `PATH`. ffprobe (included in those packages) is preferred; a lone ffmpeg also works via the parsing fallback.
+- **Linux:** `sudo apt install ffmpeg` (or your distro's package).
+- **Config override:** set `media.ffmpeg_path` / `media.probe_path` in `config.json`, or `NEURALCUT_MEDIA__FFMPEG_PATH` / `NEURALCUT_MEDIA__PROBE_PATH` environment variables.
+- Check `GET /api/v1/diagnostics` → `media` to confirm what was resolved (`probe_mode`: `ffprobe` or `ffmpeg`).
+
+Rendering writes temporary segment files under `<data_dir>/render-tmp/` and deletes them after each export. Exports always re-encode (libx264/AAC) and are verified by probing the finished file; a duration mismatch fails the job instead of reporting success.
+
+For tests, `neuralcut/tests/media_helpers.py` generates tiny synthetic videos with ffmpeg lavfi sources. Tests that need a real binary skip when none is available; installing the optional `imageio-ffmpeg` pip package into the dev venv is a convenient way to get one locally (it is not a runtime dependency).
