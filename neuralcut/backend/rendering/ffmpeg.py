@@ -240,26 +240,30 @@ class FFmpegRenderEngine:
             raise RenderCancelled("render cancelled")
 
     def _run(self, cmd: list[str], cancel_event: threading.Event, what: str) -> None:
-        proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        while proc.poll() is None:
-            if cancel_event.is_set():
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                raise RenderCancelled(f"render cancelled during {what}")
-            cancel_event.wait(0.1)
-        _stdout, stderr = proc.communicate()
-        if proc.returncode != 0:
-            tail = (stderr or "").strip().splitlines()[-8:]
-            raise RenderError(
-                f"ffmpeg failed during {what}: {' | '.join(tail) or 'unknown error'}",
-                details={"step": what, "returncode": proc.returncode},
+        # stderr goes to a temp file, not a pipe: ffmpeg logs verbosely and
+        # would deadlock on a full pipe buffer while we poll for cancellation
+        # (observed as a hang on Windows runners).
+        with tempfile.TemporaryFile(mode="w+") as stderr_file:
+            proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+                cmd, stdout=subprocess.DEVNULL, stderr=stderr_file, text=True
             )
+            while proc.poll() is None:
+                if cancel_event.is_set():
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    raise RenderCancelled(f"render cancelled during {what}")
+                cancel_event.wait(0.05)
+            if proc.returncode != 0:
+                stderr_file.seek(0)
+                tail = stderr_file.read().strip().splitlines()[-8:]
+                raise RenderError(
+                    f"ffmpeg failed during {what}: {' | '.join(tail) or 'unknown error'}",
+                    details={"step": what, "returncode": proc.returncode},
+                )
 
 
 def segment_desc(segment: dict[str, Any]) -> str:
