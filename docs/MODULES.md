@@ -115,6 +115,17 @@ Job functions must poll `cancel_event`, validate payload values, and avoid mutat
 
 - Analysis submit/status/artifacts/search endpoints and effect/keyframe endpoints. All mutations delegate to `TimelineService`.
 
+### `neuralcut/backend/agent/` (Phase 5)
+
+- `tools.py` — tool registry: names, argument schemas, risk levels. This is the agent's entire permission boundary; add tools here (with a service-level implementation) and nowhere else.
+- `planner.py` — deterministic built-in planner; ambiguity → clarification with zero steps.
+- `model_client.py` — `ModelRouter`: builtin/local/cloud routing rules and JSON-plan generation over an injectable transport.
+- `service.py` — `AgentService`: context building, plan lifecycle (draft/approve/reject/undo), controlled execution, plan persistence, JSONL audit.
+
+### `neuralcut/backend/api/v1/agent.py` (Phase 5)
+
+- `/agent/status|chat|plans|plans/{id}/approve|reject|undo|audit`. Handlers delegate to `AgentService`; no execution logic in routes.
+
 ### `neuralcut/backend/api/v1/projects.py`
 
 - Project create/open/current/save/close and recent list endpoints.

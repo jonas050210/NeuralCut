@@ -6,6 +6,19 @@ All significant changes to NeuralCut are recorded here.
 
 - Nothing yet.
 
+## [0.5.0] — 2026-10-24 — Phase 5: AI Editing Agent
+
+### Added
+
+- Agent backend (`backend/agent/`): tool registry with strict argument schemas and risk levels (read/edit/external); deterministic built-in planner (bounded intents; clarification instead of guessing); optional OpenAI-compatible local/cloud model routing with JSON-plan parsing, validation, and built-in fallback; approval-gated execution through `TimelineService`/job submission with per-step re-validation, partial-failure recording, per-plan undo, persisted plans, and a JSONL audit log.
+- Chat UI (AI Agent view): instruction form, plan review with steps/results, approve/reject/undo controls, model-route status, and audit viewer.
+- Config: `models.provider` (`builtin|local|cloud`), `endpoint`, `model`, `allow_cloud`, `api_key_env`, `timeout_seconds`. Cloud is never contacted unless explicitly allowed and keyed via environment variable; no model loads at startup.
+- Tests: tool-schema rejection (including shell-style tools), read-only auto-execution, approval gating, undo-plan exactness, ambiguity/clarification, rejection, invalid-model fallback, execution-time semantic validation, cloud opt-in routing, and a full API flow including an agent-requested render job.
+
+### Not included
+
+- Hosted/in-process model inference, fine-tuning or self-improvement (Phase 6), installer (Phase 7), and any Phase 8 audit work.
+
 ## [0.4.0] — 2026-10-24 — Phases 3 (Video Intelligence) + 4 (Effects and Animation)
 
 ### Added

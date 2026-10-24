@@ -187,3 +187,15 @@ This log records important Phase 1 decisions, reasons, consequences, and what wo
 **Reason:** A single registry keeps service validation, UI, preview, and renderer consistent. Interval-midpoint evaluation is deterministic, testable, and cheap; per-frame expression evaluation in ffmpeg would be slower and harder to keep preview-consistent.
 
 **Consequence:** Very fast keyframe ramps are approximated stepwise per interval (intervals are at most one clip long; a ramp inside a long clip evaluates at that clip's midpoints per boundary interval — i.e., per clip). Finer evaluation is possible later by subdividing intervals without changing the data model.
+
+## D-023 — Agent plans are data; execution is approval-gated (Phase 5)
+
+**Decision:** The agent (built-in planner or an external model) may only emit a plan: a list of registered tool calls with strict argument schemas. Read-only plans auto-execute; edit/external plans require explicit user approval; every call is re-validated semantically at execution time; applied edits are undoable per plan; all events are audit-logged. Model output is never executed as code and never reaches a shell.
+
+**Reason:** This preserves the deterministic-core invariant (D-010) with a model in the loop: the worst a bad model can do is propose an invalid or unwanted *plan*, which validation rejects or the user declines. It also makes agent behaviour testable headlessly without any model.
+
+## D-024 — Built-in planner first; external models are routed, optional, and fallible
+
+**Decision:** The default agent route is a deterministic built-in planner covering a bounded intent set. `models.provider=local|cloud` routes to an OpenAI-compatible endpoint the user operates; failures (unreachable, non-JSON, schema-invalid) fall back to the built-in planner with the reason surfaced. Cloud additionally requires `allow_cloud=true` and an env-var API key.
+
+**Reason:** The agent must be useful and demonstrable with no model, no download, and no network — and honest when a model is absent. Routing config is explicit and inspectable in `/api/v1/agent/status`.

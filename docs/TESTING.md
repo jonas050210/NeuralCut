@@ -38,6 +38,7 @@ The Python suite lives in `neuralcut/tests/` and is configured by `pyproject.tom
 | Media helpers | `tests/media_helpers.py` | Generates short synthetic videos with ffmpeg lavfi (color + sine audio); never personal media. Render/probe tests skip cleanly when no ffmpeg binary is available |
 | Intelligence | `test_intelligence.py` | Moving-car detection/tracking (displacement, direction, mask coverage at the car's expected position), RLE roundtrip, scene-cut shots, speech segments, honest transcript-unavailable, fingerprint cache + invalidation, cancellation, full analysis API flow (timeline untouched) |
 | Effects | `test_effects.py` | Keyframe linear/hold evaluation, registry validation (incl. per-parameter keyframe ranges), effect CRUD/preset/reorder/disable, exact persistence + undo/redo, v2→v3 migration, pixel-verified renders (brightness Δ, glow spread outside a bright square, bloom, two-track compositing, opacity blending), effects API flow |
+| Agent | `test_agent.py` | Tool-schema rejection, read-only auto-answer, draft→approve→execute→undo-plan, reject, ambiguity/clarification (zero steps), invalid model output fallback, execution-time re-validation with nonexistent IDs, cloud double opt-in routing, full chat→render-job API flow |
 
 API tests use `httpx.ASGITransport`, so they exercise FastAPI routing/serialization without needing a fixed TCP port.
 
@@ -125,6 +126,12 @@ The Phase 1 development environment was Linux without Rust. Before calling the W
    - confirm the window loads and closing it stops the Python backend.
 
 Record Windows version, Python version, commands, and failures in the PR/issue rather than silently adjusting docs.
+
+## Recorded Phase 5 results (2026-10-24, Linux dev environment)
+
+- `pytest`: **64 passed** (56 prior + 8 agent tests). Ruff/`node --check` clean.
+- Headless intent fixtures cover each supported built-in intent family plus failure modes: unknown tools and shell-like calls are rejected by the schema layer; ambiguous references yield clarification plans with no steps; a model plan referencing a nonexistent clip fails at execution without mutating the timeline; cloud routing stays on the built-in planner until both `allow_cloud` and an env key exist.
+- Not verified: a real local LLM endpoint (Ollama/llama.cpp) — the transport is covered by fakes; model plan quality is therefore unmeasured. Physical Windows verification remains pending.
 
 ## Recorded Phase 3–4 results (2026-10-24, Linux dev environment)
 

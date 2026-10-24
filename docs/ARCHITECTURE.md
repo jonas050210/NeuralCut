@@ -343,3 +343,18 @@ layers), segments encoded identically and concatenated, output
 duration-verified. The browser edited-preview evaluates the same registry
 values at the playhead and applies CSS filter approximations — it is
 labelled an approximation in the UI.
+
+## AI editing agent (Phase 5) — `neuralcut/backend/agent/`
+
+`AgentService.chat()` builds structured context (timeline summary + cached
+analysis status — never raw video), obtains a plan, and applies the
+approval policy: read-only plans execute immediately; edit/external plans
+persist as drafts until approved. Planning sources, in route order
+(`ModelRouter`): the deterministic built-in planner (`planner.py`), or an
+OpenAI-compatible local/cloud endpoint whose JSON output is parsed into
+the same `ToolCall` model. Tool definitions, argument schemas, and risk
+levels live in `tools.py`; execution is a direct mapping onto
+`TimelineService` operations and job submissions, re-validated per step
+against current state. Plans persist in `<data_dir>/agent/plans.json`;
+every event is appended to `audit.jsonl`. Project questions are answered
+from context without touching media files.

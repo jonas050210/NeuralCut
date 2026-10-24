@@ -23,11 +23,16 @@ class ModelManagerAdapter:
         self.enabled = container.settings.models.enabled
 
     def status(self) -> dict:
+        from neuralcut.backend.agent.model_client import ModelRouter
+
         return {
             "available": False,
             "enabled": self.enabled,
-            "reason": "AI models are optional and disabled in Phase 1",
+            "reason": "no model is bundled or loaded at startup; the Phase 5 agent "
+                      "uses the built-in planner unless a local/cloud endpoint is "
+                      "configured (see router)",
             "orchestrator_path": self.container.settings.models.orchestrator_path,
+            "router": ModelRouter(self.container.settings).status(),
         }
 
     def load_model(self, *args, **kwargs):  # noqa: ARG002

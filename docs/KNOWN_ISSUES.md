@@ -25,6 +25,13 @@ Known packaging gaps:
 
 ## Phase 2 functional limitations
 
+### Agent limits (Phase 5)
+
+- The **built-in planner is intentionally narrow** (documented intent list in the UI/`planner.py`); anything else returns a clarification. It resolves clips/assets by unique name substring — ambiguous names are refused, not guessed.
+- **External model quality is unmeasured**: no real LLM endpoint was available in the dev/CI environment. Model plans are validated identically to built-in plans, but a model can still propose a *valid yet unwanted* plan — that is what the approval step is for. Never enable auto-approval for edit/external tools.
+- Plan undo reverses applied *edit* steps via the timeline undo stack; it cannot un-run jobs (analysis/render) a plan started — cancel those in Background Jobs.
+- Agent plans/audit live under `<data_dir>/agent/`; they are not part of the project file and are not encrypted. Audit records contain the user's instruction text.
+
 ### Video intelligence limits (Phase 3)
 
 - **Motion detector, not a semantic detector:** tracks are `moving_object` regions from background subtraction at 96×54 / 5fps sampling. Static objects are invisible to it, a moving camera turns the whole frame into motion, lighting changes create false regions, objects that stop for >2s end their track, and small/fast objects may be missed or merged. It must never be described as car/person recognition.

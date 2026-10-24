@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="shell-header">
-    <div class="brand">NeuralCut<span class="phase"> · Phases 3–4: Intelligence &amp; Effects</span></div>
+    <div class="brand">NeuralCut<span class="phase"> · Phase 5: AI Editing Agent</span></div>
     <div class="status-pill" id="status-pill">checking backend…</div>
   </header>
 
@@ -17,6 +17,7 @@
     <a href="#projects" class="nav-link" data-nav="projects">Projects</a>
     <a href="#project" class="nav-link" data-nav="project">Current Project</a>
     <a href="#timeline" class="nav-link" data-nav="timeline">Timeline</a>
+    <a href="#agent" class="nav-link" data-nav="agent">AI Agent</a>
     <a href="#jobs" class="nav-link" data-nav="jobs">Background Jobs</a>
     <a href="#settings" class="nav-link" data-nav="settings">Settings</a>
     <a href="#logs" class="nav-link" data-nav="logs">Logs</a>
@@ -170,6 +171,23 @@
       </div>
     </section>
 
+    <!-- AI Agent (Phase 5) -->
+    <section id="view-agent" class="view">
+      <h2>AI Editing Agent</h2>
+      <div class="card">
+        <p class="muted" id="agent-route">Checking model route…</p>
+        <p class="muted">The agent turns instructions into a <strong>reviewable plan</strong> of validated tool calls. Read-only questions answer immediately; edits, imports, analysis, and exports wait for your approval. It can never run code or shell commands, and every applied edit is undoable. Without a configured local model, a deterministic built-in planner handles a bounded set of commands (try: <em>“split clip &lt;name&gt; at 1s”</em>, <em>“add glow to clip &lt;name&gt;”</em>, <em>“how long is my timeline?”</em>).</p>
+        <form id="form-agent">
+          <div class="field"><label>Instruction</label>
+            <input type="text" name="message" required placeholder="split clip intro at 2s"></div>
+          <button class="btn" type="submit">Send</button>
+        </form>
+        <p id="agent-msg" class="msg"></p>
+      </div>
+      <div class="card"><h3>Plans</h3><div id="agent-plans" class="list empty">No plans yet.</div></div>
+      <div class="card"><h3>Audit log</h3><pre id="agent-audit" class="code">-</pre></div>
+    </section>
+
     <!-- Jobs -->
     <section id="view-jobs" class="view">
       <h2>Background Jobs</h2>
@@ -222,7 +240,7 @@
   </main>
 
   <footer class="shell-footer">
-    <span>NeuralCut 0.4.0 · local-first · no cloud · models optional</span>
+    <span>NeuralCut 0.5.0 · local-first · no cloud · models optional</span>
     <span id="api-url" class="muted"></span>
   </footer>
 

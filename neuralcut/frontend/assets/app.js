@@ -136,12 +136,13 @@ function showView(id) {
   if (id === "logs") void loadLogs();
   if (id === "project") void loadCurrentProject();
   if (id === "timeline") void loadTimeline();
+  if (id === "agent") void loadAgent();
   if (id === "projects") void loadRecent();
 }
 
 function nav() {
   const hash = (window.location.hash || "#dashboard").replace("#", "");
-  const valid = ["dashboard", "projects", "project", "timeline", "jobs", "settings", "logs"];
+  const valid = ["dashboard", "projects", "project", "timeline", "agent", "jobs", "settings", "logs"];
   showView(valid.includes(hash) ? hash : "dashboard");
 }
 
@@ -711,6 +712,27 @@ async function boot() {
     try { await analyzeAsset(assetId); } catch (err) { msg("timeline-msg", err.message, "err"); }
   });
 
+  $el("form-agent")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const plan = await apiJson("/agent/chat", { method: "POST", body: { message: fd.get("message") } });
+      msg("agent-msg", plan.status === "needs_clarification" ? "The agent needs clarification (see plan)." :
+        plan.risk === "read" ? "Answered." : "Plan drafted — review and approve below.", plan.status === "needs_clarification" ? "err" : "ok");
+      e.target.reset();
+      await loadAgent();
+      if (plan.risk === "read" && typeof loadTimeline === "function") void loadTimeline();
+    } catch (err) { msg("agent-msg", err.message, "err"); }
+  });
+  $el("agent-plans")?.addEventListener("click", (e) => {
+    const approve = e.target.closest("[data-plan-approve]");
+    const reject = e.target.closest("[data-plan-reject]");
+    const undo = e.target.closest("[data-plan-undo]");
+    if (approve) void agentPlanAction("approve", approve.dataset.planApprove);
+    if (reject) void agentPlanAction("reject", reject.dataset.planReject);
+    if (undo) void agentPlanAction("undo", undo.dataset.planUndo);
+  });
+
   setText("api-url", API_BASE || window.location.origin);
 }
 
@@ -1173,4 +1195,54 @@ async function wireEffectsEditor(clip) {
     await timelineCall(`/projects/current/clips/${encodeURIComponent(clip.id)}/effects/${encodeURIComponent(id)}/keyframes`,
       { method: "PUT", body: { property: prop, keyframes: [] } });
   });
+}
+
+/* ---------- Phase 5 agent ---------- */
+
+function renderPlan(plan) {
+  const steps = (plan.steps || []).map((s, i) =>
+    `<div class="muted">${i + 1}. <strong>${escapeHtml(s.tool)}</strong> ${escapeHtml(JSON.stringify(s.args))}</div>`).join("");
+  const results = (plan.results || []).map((r) =>
+    `<div class="muted">✓ ${escapeHtml(r.tool)} → ${escapeHtml(JSON.stringify(r.result))}</div>`).join("");
+  let controls = "";
+  if (plan.status === "draft") {
+    controls = `<button class="btn" data-plan-approve="${plan.id}">Approve & execute</button>
+                <button class="btn" data-plan-reject="${plan.id}">Reject</button>`;
+  }
+  if (plan.status === "executed" && plan.applied_edit_steps > 0) {
+    controls = `<button class="btn" data-plan-undo="${plan.id}">Undo plan edits</button>`;
+  }
+  const answer = plan.answer && plan.status === "executed"
+    ? `<div><strong>Answer:</strong> ${escapeHtml(plan.answer)}</div>` : "";
+  const clar = plan.clarification ? `<div style="color:var(--warn)">${escapeHtml(plan.clarification)}</div>` : "";
+  const err = plan.error ? `<div style="color:var(--danger)">${escapeHtml(plan.error)}</div>` : "";
+  const note = plan.model_note ? `<div class="muted">${escapeHtml(plan.model_note)}</div>` : "";
+  return `<div class="job-row">
+    <div class="head"><span class="name">${escapeHtml(plan.message)}</span>
+      <span class="meta">${escapeHtml(plan.status)} · risk ${escapeHtml(plan.risk)} · via ${escapeHtml(plan.source)}</span></div>
+    <div>${escapeHtml(plan.explanation || "")}</div>${answer}${clar}${steps}${results}${note}${err}
+    <div class="controls">${controls}</div>
+  </div>`;
+}
+
+async function loadAgent() {
+  try {
+    const status = await apiJson("/agent/status");
+    const route = status.router.route;
+    setText("agent-route", `Model route: ${route.mode}${route.model ? ` (${route.model})` : ""} — ${route.detail}. Approval: ${status.approval_policy}`);
+    const plans = await apiJson("/agent/plans");
+    setHtml("agent-plans", plans.plans.length ? plans.plans.map(renderPlan).join("") : '<div class="list empty">No plans yet.</div>');
+    const audit = await apiJson("/agent/audit?limit=50");
+    setJson("agent-audit", audit.events);
+  } catch (err) {
+    msg("agent-msg", err.message, "err");
+  }
+}
+
+async function agentPlanAction(kind, id) {
+  try {
+    await apiJson(`/agent/plans/${encodeURIComponent(id)}/${kind}`, { method: "POST" });
+    await loadAgent();
+    if (typeof loadTimeline === "function") void loadTimeline();
+  } catch (err) { msg("agent-msg", err.message, "err"); }
 }
