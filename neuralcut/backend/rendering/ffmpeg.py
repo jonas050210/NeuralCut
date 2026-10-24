@@ -304,20 +304,28 @@ class FFmpegRenderEngine:
             current = target
             audio_labels.append(f"[a{j}]")
             filters.append(f"[{audio_idx}:a]aresample=48000{audio_labels[-1]}")
-        filters.append(f"{current}format=yuv420p,setsar=1,fps={settings.fps}[vout]")
+        # Bound the segment explicitly: some filter/ffmpeg-version
+        # combinations (framesync filters on ffmpeg 8) otherwise emit
+        # runaway video durations. trim/atrim + an output -t make every
+        # segment exactly the planned length on every build.
+        filters.append(
+            f"{current}format=yuv420p,setsar=1,fps={settings.fps},"
+            f"trim=duration={duration},setpts=PTS-STARTPTS[vout]"
+        )
         if audio_labels:
             if len(audio_labels) == 1:
-                filters.append(f"{audio_labels[0]}anull[aout]")
+                filters.append(f"{audio_labels[0]}anull[apre]")
             else:
                 filters.append(
                     f"{''.join(audio_labels)}amix=inputs={len(audio_labels)}"
-                    f":duration=first:dropout_transition=0[aout]"
+                    f":duration=first:dropout_transition=0[apre]"
                 )
         else:
-            filters.append(f"[{silence_idx}:a]anull[aout]")
+            filters.append(f"[{silence_idx}:a]anull[apre]")
+        filters.append(f"[apre]atrim=duration={duration},asetpts=PTS-STARTPTS[aout]")
         cmd += ["-filter_complex", ";".join(filters), "-map", "[vout]", "-map", "[aout]"]
         cmd += self._encode_args(settings)
-        cmd += [str(out)]
+        cmd += ["-t", duration, str(out)]
         return cmd
 
     # ---- ffmpeg commands ------------------------------------------------------
