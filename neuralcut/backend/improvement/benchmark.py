@@ -51,7 +51,11 @@ class BenchmarkRunner:
 
         results: list[dict[str, Any]] = []
         started = time.monotonic()
-        with tempfile.TemporaryDirectory(prefix="neuralcut-bench-") as tmp:
+        # ignore_cleanup_errors: on Windows the isolated container's log
+        # file handle can still be open at cleanup time (locked file);
+        # leaving a temp dir behind beats failing the whole run.
+        with tempfile.TemporaryDirectory(
+                prefix="neuralcut-bench-", ignore_cleanup_errors=True) as tmp:
             root = Path(tmp)
             context = load_settings(data_dir=root / "data")
             # Candidate = configuration only (model route). Applied to the
