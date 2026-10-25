@@ -53,6 +53,9 @@ jobs:
       - name: Run tests (self-improvement hardening)
         run: python -m pytest -q neuralcut/tests/test_hardening.py
 
+      - name: Run tests (training pipeline, mocked stack)
+        run: python -m pytest -q neuralcut/tests/test_training.py
+
       - name: Lint (ruff) and frontend syntax
         run: |
           python -m ruff check neuralcut

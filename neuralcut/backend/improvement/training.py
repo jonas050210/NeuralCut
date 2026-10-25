@@ -73,8 +73,10 @@ class TrainingPreparer:
             raise ValidationError(
                 "dataset is not valid for training",
                 details={"validation": validation})
-        base_model = config.get("base_model", "Qwen3.5-4B (GGUF Q4_K_M) -- placeholder, "
-                                             "select + verify license on the home PC")
+        base_model = config.get(
+            "base_model",
+            "Qwen/Qwen3-4B-Instruct-2507 (HF safetensors, Apache-2.0 -- "
+            "license verified on the HF repo; GGUF is inference-only)")
         spec = {
             "job": "orchestrator-qlora-sft",
             "dry_run": True,
@@ -97,12 +99,12 @@ class TrainingPreparer:
             },
             "hardware_requirements": HARDWARE_REQUIREMENTS,
             "command_preview": [
-                "# On the home PC, inside an isolated venv/conda env:",
-                "python -m neuralcut.training.train_qlora \\",
+                "# On the home PC, in the separate training env (scripts/setup_training.ps1):",
+                ".venv-training\\Scripts\\python.exe -m neuralcut.training.train_qlora --preflight",
+                ".venv-training\\Scripts\\python.exe -m neuralcut.training.train_qlora \\",
                 f"  --dataset benchmark-{DATASET_VERSION}.json \\",
-                "  --base-model <local-gguf-or-hf-id> --output adapters/<version>",
-                "# (training entrypoint is intentionally not shipped in-app;",
-                "#  see docs/SELF_IMPROVEMENT.md for the reproducible recipe)",
+                "  --base-model Qwen/Qwen3-4B-Instruct-2507 --output adapters/orchestrator-v1",
+                "# add --confirm-training to actually train; default is a dry run",
             ],
             "outputs": ["adapter weights (versioned)", "training log",
                         "evaluation report vs incumbent on val + held-out"],

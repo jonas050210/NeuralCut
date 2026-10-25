@@ -40,3 +40,6 @@ logs/
 neuralcut/logs/
 src-tauri/binaries/neuralcut-backend*
 src-tauri/target/
+
+.venv-training/
+adapters/
