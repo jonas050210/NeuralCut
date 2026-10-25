@@ -1,8 +1,8 @@
 """Training pipeline tests: dataset hygiene, preflight, dry-run, mocked run.
 
 No real GPU/model/training is involved: the heavy stack is stubbed, and
-the run test verifies wiring (quantization config, LoRA, checkpoint
-resume, adapter save, manifest) only.
+the run tests verify wiring (quantization config, LoRA, explicit checkpoint
+resume, logging/evaluation, adapter save, metrics and manifest) only.
 """
 
 from __future__ import annotations
@@ -76,12 +76,19 @@ class _FakeModel:
 class _FakeTrainer:
     saved_to: str | None = None
     resumed_from = "unset"
+    instance = None
 
     def __init__(self, **kwargs) -> None:  # noqa: ANN003
         self.kwargs = kwargs
+        self.state = types.SimpleNamespace(global_step=4, log_history=[{"loss": 0.5}])
+        _FakeTrainer.instance = self
 
-    def train(self, resume_from_checkpoint=None) -> None:  # noqa: ANN001
+    def train(self, resume_from_checkpoint=None):  # noqa: ANN001
         _FakeTrainer.resumed_from = resume_from_checkpoint
+        return types.SimpleNamespace(metrics={"train_loss": 0.5, "train_runtime": 2.0})
+
+    def evaluate(self):
+        return {"eval_loss": 0.4, "eval_runtime": 0.5}
 
     def save_model(self, path) -> None:  # noqa: ANN001
         _FakeTrainer.saved_to = path
@@ -122,8 +129,73 @@ def test_mocked_training_run_saves_adapter_and_manifest(
     assert manifest["base_model"] == tq.DEFAULT_BASE_MODEL
     assert "candidate only" in manifest["promotion"]
     assert result["resumed_from"] is None
+    assert _FakeTrainer.resumed_from is None
+    args = _FakeTrainer.instance.kwargs["args"][1]
+    assert args["logging_strategy"] == "steps" and args["logging_steps"] == 1
+    assert args["eval_strategy"] == "epoch" and args["save_strategy"] == "epoch"
+    metrics = json.loads(Path(result["metrics_file"]).read_text())
+    assert metrics["training"]["train_loss"] == 0.5
+    assert metrics["evaluation"]["eval_loss"] == 0.4
+    assert metrics["global_step"] == 4
 
-    # A second run resumes from the latest checkpoint directory.
     checkpoint = tmp_path / "run" / "checkpoint-3"
     checkpoint.mkdir()
     assert tq.find_latest_checkpoint(tmp_path / "run") == str(checkpoint)
+
+
+def _valid_checkpoint(path: Path, *, global_step: int = 2, max_steps: int = 4) -> None:
+    path.mkdir(parents=True)
+    (path / "trainer_state.json").write_text(json.dumps({
+        "global_step": global_step, "max_steps": max_steps}), encoding="utf-8")
+    for filename in ("optimizer.pt", "scheduler.pt", "adapter_model.safetensors"):
+        (path / filename).write_bytes(b"fake")
+
+
+def test_fresh_run_never_auto_resumes_and_protects_existing_output(
+        monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
+    out = tmp_path / "existing"
+    _valid_checkpoint(out / "checkpoint-4", global_step=4, max_steps=4)
+    config = tq.TrainingJobConfig(output_dir=str(out))
+    monkeypatch.setattr(tq, "preflight", lambda cfg: {"ready": True, "problems": []})
+    monkeypatch.setattr(tq, "_load_stack", lambda: pytest.fail("must refuse before loading model"))
+    with pytest.raises(tq.TrainingError, match="not empty"):
+        tq.run_training(config, confirm=True)
+    assert (out / "checkpoint-4" / "trainer_state.json").is_file()
+
+
+def test_explicit_resume_requires_incomplete_valid_checkpoint(
+        monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
+    out = tmp_path / "resume"
+    checkpoint = out / "checkpoint-2"
+    _valid_checkpoint(checkpoint)
+    config = tq.TrainingJobConfig(output_dir=str(out))
+    monkeypatch.setattr(tq, "_load_stack", _fake_stack)
+    monkeypatch.setattr(tq, "preflight", lambda cfg: {"ready": True, "problems": []})
+    result = tq.run_training(config, confirm=True, resume_from_checkpoint="latest")
+    assert result["resumed_from"] == str(checkpoint.resolve())
+    assert _FakeTrainer.resumed_from == str(checkpoint.resolve())
+
+
+def test_completed_or_incomplete_checkpoints_are_rejected_as_unresumable(
+        tmp_path: Path) -> None:
+    out = tmp_path / "run"
+    completed = out / "checkpoint-4"
+    _valid_checkpoint(completed, global_step=4, max_steps=4)
+    with pytest.raises(tq.TrainingError, match="already complete"):
+        tq.validate_resume_checkpoint(out, completed)
+    invalid = out / "checkpoint-5"
+    invalid.mkdir()
+    with pytest.raises(tq.TrainingError, match="trainer_state"):
+        tq.validate_resume_checkpoint(out, invalid)
+
+
+def test_existing_adapter_is_never_overwritten_on_resume(
+        monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
+    out = tmp_path / "resume"
+    checkpoint = out / "checkpoint-2"
+    _valid_checkpoint(checkpoint)
+    (out / "adapter").mkdir()
+    config = tq.TrainingJobConfig(output_dir=str(out))
+    monkeypatch.setattr(tq, "preflight", lambda cfg: {"ready": True, "problems": []})
+    with pytest.raises(tq.TrainingError, match="overwrite existing adapter"):
+        tq.run_training(config, confirm=True, resume_from_checkpoint="latest")

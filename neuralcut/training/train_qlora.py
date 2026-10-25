@@ -203,9 +203,13 @@ def write_sft_files(config: TrainingJobConfig, out_dir: Path) -> dict[str, Any]:
                           ("eval", (config.eval_split,))):
         examples = build_sft_examples(manifest, splits)
         path = out_dir / f"sft_{label}.jsonl"
-        path.write_text(
-            "".join(json.dumps(e, sort_keys=True) + "\n" for e in examples),
-            encoding="utf-8")
+        contents = "".join(json.dumps(e, sort_keys=True) + "\n" for e in examples)
+        if path.exists():
+            if path.read_text(encoding="utf-8") != contents:
+                raise TrainingError(
+                    f"refusing to overwrite existing SFT data: {path}; use a new output directory")
+        else:
+            path.write_text(contents, encoding="utf-8")
         written[label] = {"file": str(path), "examples": len(examples),
                           "splits": list(splits)}
     return written
@@ -309,6 +313,7 @@ def preflight(config: TrainingJobConfig) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 def find_latest_checkpoint(output_dir: str | Path) -> str | None:
+    """Return the numerically latest checkpoint (selection is never implicit)."""
     out = Path(output_dir)
     if not out.is_dir():
         return None
@@ -316,6 +321,60 @@ def find_latest_checkpoint(output_dir: str | Path) -> str | None:
         (p for p in out.glob("checkpoint-*") if p.is_dir()),
         key=lambda p: int(p.name.split("-")[-1]) if p.name.split("-")[-1].isdigit() else -1)
     return str(checkpoints[-1]) if checkpoints else None
+
+
+def validate_resume_checkpoint(output_dir: str | Path, checkpoint: str | Path) -> str:
+    """Ensure a selected checkpoint is inside this run and can make progress."""
+    out = Path(output_dir).resolve()
+    selected = Path(checkpoint)
+    if not selected.is_absolute():
+        selected = out / selected
+    selected = selected.resolve()
+    if (selected.parent != out or not selected.is_dir()
+            or not selected.name.startswith("checkpoint-")):
+        raise TrainingError(
+            "resume checkpoint must be a checkpoint-* directory inside the output directory")
+    latest = find_latest_checkpoint(out)
+    if latest is not None and Path(latest).resolve() != selected:
+        raise TrainingError(
+            "refusing to resume an older checkpoint while newer checkpoints exist; "
+            "use the latest checkpoint or a new output directory")
+    state_path = selected / "trainer_state.json"
+    if not state_path.is_file():
+        raise TrainingError(f"checkpoint is not resumable (missing trainer_state.json): {selected}")
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        global_step = int(state["global_step"])
+        max_steps = int(state["max_steps"])
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise TrainingError(f"checkpoint has invalid trainer state: {selected}") from exc
+    if global_step >= max_steps:
+        raise TrainingError(
+            f"checkpoint is already complete (global_step={global_step}, max_steps={max_steps}); "
+            "choose an incomplete checkpoint or a new output directory")
+    required = ("optimizer.pt", "scheduler.pt")
+    missing = [name for name in required if not (selected / name).is_file()]
+    if missing:
+        raise TrainingError(f"checkpoint is not resumable; missing {', '.join(missing)}")
+    weight_files = (
+        "adapter_model.safetensors", "adapter_model.bin",
+        "model.safetensors", "pytorch_model.bin")
+    if not any((selected / name).is_file() for name in weight_files):
+        raise TrainingError("checkpoint is not resumable (missing model/adapter weights)")
+    return str(selected)
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert trainer metrics (including numpy scalar values) to JSON values."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if hasattr(value, "item"):
+        return _json_safe(value.item())
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def _load_stack() -> dict[str, Any]:
@@ -341,13 +400,33 @@ def _load_stack() -> dict[str, Any]:
     }
 
 
-def run_training(config: TrainingJobConfig, *, confirm: bool = False) -> dict[str, Any]:
-    """Run QLoRA SFT. Refuses without explicit confirmation and a GPU."""
+def run_training(config: TrainingJobConfig, *, confirm: bool = False,
+                 resume_from_checkpoint: str | None = None) -> dict[str, Any]:
+    """Run QLoRA SFT. Refuses without confirmation, explicit resume, and a GPU."""
     if not confirm:
         raise TrainingError(
             "real training requires the explicit --confirm-training flag; "
             "run with --dry-run or --preflight instead")
     config.validate()
+    out_dir = Path(config.output_dir)
+    if resume_from_checkpoint is None:
+        if out_dir.exists() and not out_dir.is_dir():
+            raise TrainingError(f"output path is not a directory: {out_dir}")
+        if out_dir.exists() and any(out_dir.iterdir()):
+            raise TrainingError(
+                f"output directory is not empty: {out_dir}; use a new output directory "
+                "or explicitly resume from an incomplete checkpoint")
+        resume = None
+    else:
+        selected = (find_latest_checkpoint(out_dir)
+                    if resume_from_checkpoint == "latest" else resume_from_checkpoint)
+        if selected is None:
+            raise TrainingError(f"no checkpoint found to resume in {out_dir}")
+        resume = validate_resume_checkpoint(out_dir, selected)
+        if (out_dir / "adapter").exists():
+            raise TrainingError(
+                f"refusing to overwrite existing adapter: {out_dir / 'adapter'}; "
+                "use a new output directory")
     check = preflight(config)
     if not check["ready"]:
         raise TrainingError(f"preflight failed: {check['problems']}")
@@ -356,7 +435,6 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False) -> dict[st
     if not torch.cuda.is_available():  # belt-and-braces; preflight checks too
         raise TrainingError("CUDA GPU required for QLoRA training")
 
-    out_dir = Path(config.output_dir)
     files = write_sft_files(config, out_dir / "data")
     train_data = [json.loads(line) for line in
                   Path(files["train"]["file"]).read_text(encoding="utf-8").splitlines()]
@@ -384,7 +462,8 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False) -> dict[st
         per_device_train_batch_size=config.per_device_train_batch_size,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         learning_rate=config.learning_rate, lr_scheduler_type="cosine",
-        warmup_ratio=0.03, logging_steps=5, save_strategy="epoch",
+        warmup_ratio=0.03, logging_strategy="steps", logging_steps=1,
+        eval_strategy="epoch", save_strategy="epoch",
         bf16=True, gradient_checkpointing=True, seed=config.seed,
         dataset_text_field="text", max_length=config.max_seq_len,
         report_to=[])
@@ -393,11 +472,20 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False) -> dict[st
         train_dataset=stack["Dataset"].from_list(train_data),
         eval_dataset=stack["Dataset"].from_list(eval_data),
         processing_class=tokenizer)
-    resume = find_latest_checkpoint(out_dir)
-    trainer.train(resume_from_checkpoint=resume)
+    train_result = trainer.train(resume_from_checkpoint=resume)
+    training_metrics = getattr(train_result, "metrics", {}) or {}
+    evaluation_metrics = trainer.evaluate()
     adapter_dir = out_dir / "adapter"
     trainer.save_model(str(adapter_dir))
     tokenizer.save_pretrained(str(adapter_dir))
+    metrics = {
+        "training": _json_safe(training_metrics),
+        "evaluation": _json_safe(evaluation_metrics),
+        "global_step": getattr(getattr(trainer, "state", None), "global_step", None),
+        "log_history": _json_safe(getattr(getattr(trainer, "state", None), "log_history", [])),
+    }
+    (out_dir / "training_metrics.json").write_text(
+        json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
     manifest = {
         "job": "orchestrator-qlora-sft", "base_model": config.base_model,
         "base_model_license": BASE_MODEL_INFO["license"],
@@ -409,7 +497,7 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False) -> dict[st
     (out_dir / "training_manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return {"adapter_dir": str(adapter_dir), "manifest": manifest,
-            "resumed_from": resume}
+            "resumed_from": resume, "metrics_file": str(out_dir / "training_metrics.json")}
 
 
 # --------------------------------------------------------------------------
@@ -429,6 +517,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--preflight", action="store_true",
                         help="check deps/CUDA/VRAM/dataset and exit")
+    parser.add_argument("--resume", nargs="?", const="latest", default=None,
+                        metavar="CHECKPOINT",
+                        help="explicitly resume an incomplete checkpoint (path or 'latest')")
     parser.add_argument("--confirm-training", action="store_true",
                         help="actually train (requires CUDA + training env)")
     args = parser.parse_args(argv)
@@ -438,14 +529,18 @@ def main(argv: list[str] | None = None) -> int:
         max_seq_len=args.max_seq_len, seed=args.seed)
     try:
         config.validate()
+        if args.resume is not None and not args.confirm_training:
+            raise TrainingError("--resume is only valid together with --confirm-training")
         if args.preflight:
             report = preflight(config)
             print(json.dumps(report, indent=2, sort_keys=True))
             return 0 if report["ready"] else 2
         if args.confirm_training:
-            result = run_training(config, confirm=True)
+            result = run_training(config, confirm=True,
+                                  resume_from_checkpoint=args.resume)
             print(json.dumps({"adapter_dir": result["adapter_dir"],
-                              "resumed_from": result["resumed_from"]}, indent=2))
+                              "resumed_from": result["resumed_from"],
+                              "metrics_file": result["metrics_file"]}, indent=2))
             return 0
         # Default: dry run only.
         check = preflight(config)

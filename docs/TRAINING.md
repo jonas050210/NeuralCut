@@ -44,11 +44,13 @@ app are untouched by this.
 # 2) Preflight: deps, CUDA, VRAM estimate, dataset validity (no downloads)
 .\.venv-training\Scripts\python.exe -m neuralcut.training.train_qlora --preflight
 
-# 3) Dry run (default): validates data, writes SFT files, prints the plan
-.\.venv-training\Scripts\python.exe -m neuralcut.training.train_qlora --output adapters\orchestrator-v1
+# 3) Optional dry run: validates data, writes SFT files, prints the plan
+#    Use a separate directory from the actual training run.
+.\.venv-training\Scripts\python.exe -m neuralcut.training.train_qlora --output adapters\orchestrator-dryrun
 
 # 4) Real training (downloads the base model on first run; hours-scale on a 4060 Ti for this tiny dataset)
-.\.venv-training\Scripts\python.exe -m neuralcut.training.train_qlora --output adapters\orchestrator-v1 --confirm-training
+#    Pick a new, empty directory for every fresh run. This command is an example.
+.\.venv-training\Scripts\python.exe -m neuralcut.training.train_qlora --output adapters\orchestrator-2026-10-25-run1 --confirm-training
 ```
 
 ## Data rules (enforced in code)
@@ -60,14 +62,21 @@ app are untouched by this.
 - Outputs: `adapters/<name>/data/sft_{train,eval}.jsonl`,
   `checkpoint-*` per epoch, `adapter/` (final LoRA adapter),
   `training_manifest.json` (base model, license, config, dataset
-  fingerprint, seed, resume info).
+  fingerprint, seed, resume info), and `training_metrics.json` (train/eval
+  metrics and trainer log history).
 
 ## Failure recovery
 
-- OOM → reduce `--max-seq-len`; rerun (resume is automatic from the
-  latest `checkpoint-*` in the output dir).
-- Interrupted run → rerun the same command; it resumes from the latest
-  checkpoint.
+- Fresh training refuses a non-empty output directory, so existing
+  adapters and checkpoints are never silently overwritten. Use a new
+  output directory for another fresh run.
+- Interrupted run → explicitly resume an incomplete checkpoint with
+  `--resume` (latest) or `--resume checkpoint-<step>`, together with
+  `--confirm-training`. Completed checkpoints cannot be resumed; use a
+  new output directory instead.
+- Training loss is logged each step and evaluation runs at each epoch;
+  `training_metrics.json` records final train/evaluation metrics and the
+  trainer log history alongside `training_manifest.json`.
 - Preflight failures list exactly which dependency is missing; the app
   installation is never affected.
 
