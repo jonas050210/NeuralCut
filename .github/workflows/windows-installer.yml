@@ -88,6 +88,32 @@ jobs:
           npm install
           npx tauri build
 
+      - name: Silent install / launch / uninstall smoke test
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          Write-Host "Installing $($setup.Name) silently..."
+          Start-Process -FilePath $setup.FullName -ArgumentList "/S" -Wait
+          $installDir = Join-Path $env:LOCALAPPDATA "NeuralCut"
+          $appExe = Join-Path $installDir "neuralcut.exe"
+          if (-not (Test-Path $appExe)) { throw "installed neuralcut.exe not found in $installDir" }
+          if (-not (Test-Path (Join-Path $installDir "neuralcut-backend.exe"))) { throw "backend sidecar missing from install" }
+          $shortcut = Join-Path $env:USERPROFILE "Desktop\NeuralCut.lnk"
+          if (Test-Path $shortcut) { Write-Host "desktop shortcut OK" } else { Write-Host "::warning::desktop shortcut not found" }
+          Write-Host "Launching installed app..."
+          $app = Start-Process -FilePath $appExe -PassThru
+          Start-Sleep -Seconds 10
+          if ($app.HasExited) { throw "installed app exited prematurely (code $($app.ExitCode))" }
+          Write-Host "installed app stayed running; closing it"
+          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          Get-Process neuralcut-backend -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Write-Host "Uninstalling silently..."
+          Start-Process -FilePath (Join-Path $installDir "uninstall.exe") -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path $appExe) { throw "uninstall left neuralcut.exe behind" }
+          Write-Host "install/launch/uninstall smoke OK"
+
       - name: Upload setup.exe artifact
         uses: actions/upload-artifact@v4
         with:
