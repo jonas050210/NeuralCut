@@ -51,7 +51,16 @@ jobs:
 
       - name: Build backend sidecar (PyInstaller)
         shell: pwsh
-        run: .\scripts\build_backend.ps1
+        run: |
+          try {
+            .\scripts\build_backend.ps1 *>&1 | Tee-Object -FilePath sidecar.log
+            if ($LASTEXITCODE -ne 0) { throw "build_backend.ps1 exit $LASTEXITCODE" }
+          } catch {
+            $tail = (Get-Content sidecar.log -Tail 60 -ErrorAction SilentlyContinue) -join "`n"
+            $esc = $tail -replace "%","%25" -replace "`r","" -replace "`n","%0A"
+            Write-Host "::error::SIDECARDIAG $esc"
+            throw
+          }
 
       - name: Smoke-test the sidecar
         shell: pwsh
