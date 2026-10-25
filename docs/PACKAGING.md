@@ -16,6 +16,18 @@
   data, output to `src-tauri/binaries/neuralcut-backend-x86_64-pc-windows-msvc.exe`
   (git-ignored; built, not committed).
 
+## Automated installer build (CI)
+
+`.github/workflows/windows-installer.yml` (manual `workflow_dispatch`)
+builds the real NSIS `setup.exe` on `windows-latest`: PyInstaller sidecar
+→ sidecar health smoke test (`/api/v1/health`) → `tauri build` → uploads
+`NeuralCut-setup-windows` as a build artifact. It never creates a GitHub
+Release. NSIS installs per-user (no admin) with a Start Menu entry
+(Tauri template) plus a Desktop shortcut (installer hooks in
+`src-tauri/windows/installer-hooks.nsh`, removed on uninstall). User
+projects and app data live outside the install dir and are never deleted
+by install/uninstall.
+
 ## Build steps (home PC, Windows 10/11)
 
 1. Install Python 3.11+, Rust (rustup, MSVC toolchain), WebView2, Node 22.
@@ -64,7 +76,7 @@
 | Check | Status |
 |---|---|
 | Test suite on Windows CI runners (Python) | Verified by GitHub Actions |
-| Tauri shell compiles on Windows | **Not verified** — no Rust toolchain in the dev/CI sandbox; `src-tauri` changed in Phase 7 without compilation |
+| Tauri shell compiles on Windows | **Verified only via the Windows Installer CI workflow when it passes** — check the latest run/artifact; still not verified on a physical machine |
 | NSIS installer installs/launches on clean Windows | **Not verified** — requires the home PC steps above |
 | Sidecar (PyInstaller) smoke run | **Not verified** — script provided, not executed |
 | Offline first launch, no-NVIDIA machine | **Not verified** on physical hardware |

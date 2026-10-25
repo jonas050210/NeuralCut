@@ -128,6 +128,12 @@ The Phase 1 development environment was Linux without Rust. Before calling the W
 
 Record Windows version, Python version, commands, and failures in the PR/issue rather than silently adjusting docs.
 
+## Recorded hardening results (2026-10-24, Linux dev environment)
+
+- Full suite: **82 passed** (75 prior + 7 hardening regressions in `test_hardening.py`). Ruff, `node --check`, and `scripts/check_packaging.py` clean.
+- Covered regressions: live-logging preservation across benchmark runs, held-out sealing (routine runs + evaluate endpoint cannot reach held-out; promotion blocked until audited gate evaluation), experiment state machine (no demotion/duplicate promotion/invalid rollback), registry audit-failure visibility without operation failure, feedback rating validation, job payload redaction, queued-job cancellation (no spurious timeout failure).
+- The Windows installer is built by the `windows-installer` CI workflow; check its latest run for the artifact. Physical-machine install/launch remains unverified.
+
 ## Recorded Phase 6–7 results (2026-10-24, Linux dev environment)
 
 - Full suite: **75 passed** (64 prior + 4 agent-hardening regressions + 7 improvement). Ruff and `node --check` clean; CI now runs every test file plus Ruff.

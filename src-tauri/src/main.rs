@@ -129,7 +129,7 @@ fn main() {
             }
             let url = format!("http://127.0.0.1:{port}/");
             tauri::WebviewWindowBuilder::new(
-                app,
+                app.handle(),
                 "main",
                 tauri::WebviewUrl::External(url.parse().expect("valid backend URL")),
             )

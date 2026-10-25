@@ -37,12 +37,20 @@ class BenchmarkRunner:
     # -- public -----------------------------------------------------------
 
     def run(self, candidate: dict[str, Any] | None = None,
-            splits: list[str] | None = None) -> dict[str, Any]:
-        """Run benchmark cases in a fully isolated throwaway application."""
+            splits: list[str] | None = None, *,
+            include_held_out: bool = False) -> dict[str, Any]:
+        """Run benchmark cases in a fully isolated throwaway application.
+
+        Held-out cases are sealed: they are excluded unless
+        ``include_held_out=True`` is passed explicitly (baseline recording
+        and the audited promotion gate evaluation only).
+        """
         from neuralcut.config import load_settings
 
         candidate = candidate or {"name": "incumbent", "planner": "builtin"}
         cases = build_cases()
+        if not include_held_out:
+            cases = [c for c in cases if c["split"] != "held_out"]
         if splits:
             cases = [c for c in cases if c["split"] in splits]
         limit = self._settings.improvement.max_benchmark_cases
@@ -63,7 +71,7 @@ class BenchmarkRunner:
             self._apply_candidate(context.settings, candidate)
             from neuralcut.backend.di import Container
 
-            isolated = Container(context)
+            isolated = Container(context, configure_logging=False)
             workspace = root / "projects"
             workspace.mkdir()
             for case in cases:
@@ -145,6 +153,10 @@ class BenchmarkRunner:
             if plan["status"] == "draft":
                 plan = agent.approve(plan["id"])
             entry["plan_status"] = plan["status"]
+            # Trajectory: the validated tool-call sequence the agent
+            # produced (scorer evidence for failure analysis).
+            entry["trajectory"] = [
+                {"tool": s["tool"], "args": s["args"]} for s in plan["steps"]]
             entry["passed"], entry["detail"] = self._grade(
                 isolated.timeline_service, case, plan)
         except Exception as exc:  # noqa: BLE001 - a failing case is data, not a crash
@@ -231,6 +243,8 @@ class BenchmarkRunner:
                 "accuracy": round(passed / total, 4) if total else 0.0,
             },
             "duration_seconds": round(elapsed, 3),
+            "held_out_accessed": any(c["split"] == "held_out" for c in results),
+            "splits_evaluated": sorted({c["split"] for c in results}),
             "failure_categories": failure_categories,
             "isolation": "temporary data dir + fixture projects; user projects untouched",
         }

@@ -30,9 +30,10 @@ class ImprovementService:
         settings = self._container.settings.improvement
         return {
             "feedback_enabled": settings.feedback_enabled,
-            "feedback_count": len(self.feedback.list(limit=100000)),
+            "feedback_count": self.feedback.count(),
             "champion": self.registry.champion(),
             "has_baseline": self.registry.baseline() is not None,
+            "audit_error": self.registry.last_audit_error,
             "auto_promotion": False,
             "training": "prepared (dry-run specs only); never executed in-app",
             "isolation": "benchmarks use temporary data dirs + synthetic fixtures",
@@ -44,7 +45,11 @@ class ImprovementService:
         return build_manifest()
 
     def run_baseline(self) -> dict[str, Any]:
-        report = self.runner.run({"name": "incumbent-builtin", "planner": "builtin"})
+        # Baseline recording is a gate reference: it is one of the two
+        # audited paths allowed to touch held-out data.
+        report = self.runner.run(
+            {"name": "incumbent-builtin", "planner": "builtin"},
+            include_held_out=True)
         return self.registry.set_baseline(report)
 
     def run_benchmark(self, candidate: dict[str, Any] | None = None,
@@ -61,9 +66,25 @@ class ImprovementService:
         return self.registry.create_experiment(name, candidate or {})
 
     def evaluate_experiment(self, experiment_id: str) -> dict[str, Any]:
+        """Routine evaluation for iterative tuning: train/val only.
+        Held-out results are deliberately not exposed here."""
         exp = self.registry.get_experiment(experiment_id)
-        report = self.runner.run(exp["candidate"])
+        report = self.runner.run(exp["candidate"])  # held-out excluded
         return self.registry.record_evaluation(experiment_id, report)
+
+    def gate_evaluate_experiment(self, experiment_id: str) -> dict[str, Any]:
+        """Explicit promotion-decision step: full run incl. held-out,
+        recorded and audit-logged. Use sparingly -- every use is a
+        held-out access."""
+        exp = self.registry.get_experiment(experiment_id)
+        report = self.runner.run(exp["candidate"], include_held_out=True)
+        return self.registry.record_gate_evaluation(experiment_id, report)
+
+    def promote_experiment(self, experiment_id: str, *, reviewer: str,
+                           spot_check_confirmed: bool) -> dict[str, Any]:
+        return self.registry.promote(
+            experiment_id, reviewer=reviewer,
+            spot_check_confirmed=spot_check_confirmed)
 
     # ---- training -----------------------------------------------------------
 

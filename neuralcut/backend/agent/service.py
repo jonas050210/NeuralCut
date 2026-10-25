@@ -86,7 +86,8 @@ class AgentService:
     def chat(self, message: str) -> dict[str, Any]:
         if not message or not message.strip():
             raise ValidationError("message must not be empty")
-        context = self.context()
+        with self._lock:  # snapshot a consistent context (no mid-chat switches)
+            context = self.context()
         source = "builtin"
         model_note = None
         result: dict[str, Any] | None = None
@@ -234,8 +235,11 @@ class AgentService:
             self._audit("step_failed", plan, {"error": plan["error"]})
         try:
             plan["post_state"] = service.current_snapshot()
-        except Exception:  # noqa: BLE001 - project may have been closed mid-plan
+        except Exception as exc:  # noqa: BLE001 - project may have been closed mid-plan
             plan["post_state"] = None
+            plan["undo_error"] = (
+                f"could not snapshot post-plan state ({type(exc).__name__}); "
+                "plan undo is unavailable, use manual undo")
         plan["updated_at"] = _now()
 
     def _execute_step(self, call: ToolCall, plan: dict[str, Any]) -> Any:

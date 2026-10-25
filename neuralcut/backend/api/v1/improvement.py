@@ -82,10 +82,16 @@ def evaluate_experiment(request: Request, experiment_id: str) -> dict:
     return get_container(request).improvement_service.evaluate_experiment(experiment_id)
 
 
+@router.post("/experiments/{experiment_id}/gate-evaluate")
+def gate_evaluate(request: Request, experiment_id: str) -> dict:
+    return get_container(request).improvement_service.gate_evaluate_experiment(
+        experiment_id)
+
+
 @router.post("/experiments/{experiment_id}/promote")
 def promote(request: Request, experiment_id: str, body: PromoteRequest) -> dict:
     service = get_container(request).improvement_service
-    return service.registry.promote(
+    return service.promote_experiment(
         experiment_id, reviewer=body.reviewer,
         spot_check_confirmed=body.spot_check_confirmed)
 

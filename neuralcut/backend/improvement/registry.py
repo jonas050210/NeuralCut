@@ -29,7 +29,16 @@ from typing import Any
 
 from neuralcut.errors import NotFoundError, ValidationError
 
-TERMINAL_EXPERIMENT = {"evaluated", "promoted", "rejected", "rolled_back"}
+TERMINAL_EXPERIMENT = {"promoted", "rolled_back", "rejected"}
+
+# Legal experiment status transitions. Terminal states reject everything.
+TRANSITIONS: dict[str, set[str]] = {
+    "created": {"evaluated"},
+    "evaluated": {"evaluated", "promoted"},
+    "promoted": {"rolled_back"},
+    "rolled_back": set(),
+    "rejected": set(),
+}
 
 
 def _now() -> str:
@@ -46,6 +55,9 @@ class ImprovementRegistry:
         self._state: dict[str, Any] = {
             "baseline": None, "experiments": {}, "champion": None, "history": [],
         }
+        # Last audit-write error (visible via status); audit failures never
+        # mask a successfully persisted operation.
+        self.last_audit_error: str | None = None
         if self._state_file.is_file():
             try:
                 loaded = json.loads(self._state_file.read_text(encoding="utf-8"))
@@ -62,15 +74,24 @@ class ImprovementRegistry:
                        encoding="utf-8")
         tmp.replace(self._state_file)
 
-    def _audit(self, event: str, details: dict[str, Any]) -> None:
+    def _audit(self, event: str, details: dict[str, Any]) -> bool:
+        """Append an audit record. Returns False (and records the error on
+        ``last_audit_error`` + the app log) instead of raising: a persisted
+        registry operation must never be reported as failed merely because
+        the audit append failed, but the failure must stay visible."""
         record = {"ts": _now(), "event": event, **details}
         try:
             with self._audit_file.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, sort_keys=True) + "\n")
-        except OSError:
-            # Registry mutations are already saved; an audit failure must be
-            # visible in the response, not fail the operation silently.
-            raise ValidationError("could not write improvement audit log") from None
+            self.last_audit_error = None
+            return True
+        except OSError as exc:
+            self.last_audit_error = f"{event}: {exc}"
+            import logging
+
+            logging.getLogger("neuralcut.improvement").warning(
+                "improvement audit write failed (%s): %s", event, exc)
+            return False
 
     def audit_tail(self, limit: int = 100) -> list[dict[str, Any]]:
         if not self._audit_file.is_file():
@@ -132,6 +153,7 @@ class ImprovementRegistry:
     def record_evaluation(self, experiment_id: str,
                           report: dict[str, Any]) -> dict[str, Any]:
         exp = self.get_experiment(experiment_id)
+        self._require_transition(exp, "evaluated")
         exp["report"] = report
         exp["gates"] = self.evaluate_gates(report)
         exp["status"] = "evaluated"
@@ -141,6 +163,36 @@ class ImprovementRegistry:
             "experiment_id": experiment_id,
             "accuracy": report["overall"]["accuracy"],
             "gates_passed": exp["gates"]["passed"]})
+        return exp
+
+    @staticmethod
+    def _require_transition(exp: dict[str, Any], target: str) -> None:
+        allowed = TRANSITIONS.get(exp["status"], set())
+        if target not in allowed:
+            raise ValidationError(
+                f"experiment is {exp['status']} and cannot become {target}",
+                details={"experiment_id": exp["id"], "status": exp["status"],
+                         "allowed": sorted(allowed)})
+
+    def record_gate_evaluation(self, experiment_id: str,
+                               report: dict[str, Any]) -> dict[str, Any]:
+        """Store a full (held-out-inclusive) report from the explicit,
+        audited gate-evaluation path. This is the only way promotion-grade
+        evidence is recorded."""
+        exp = self.get_experiment(experiment_id)
+        self._require_transition(exp, "evaluated")
+        if not report.get("held_out_accessed"):
+            raise ValidationError("gate evaluation must include held-out cases")
+        exp["report"] = report
+        exp["gates"] = self.evaluate_gates(report)
+        exp["status"] = "evaluated"
+        exp["gate_evaluated_at"] = _now()
+        exp["updated_at"] = _now()
+        self._save()
+        self._audit("held_out_gate_evaluation", {
+            "experiment_id": experiment_id,
+            "accuracy": report["overall"]["accuracy"],
+            "dataset_fingerprint": report["dataset_fingerprint"]})
         return exp
 
     # ---- gates ------------------------------------------------------------------
@@ -195,6 +247,11 @@ class ImprovementRegistry:
         if exp["status"] != "evaluated" or exp["report"] is None:
             raise ValidationError("experiment must be evaluated before promotion")
         gates = self.evaluate_gates(exp["report"])
+        if not exp["report"].get("held_out_accessed"):
+            raise ValidationError(
+                "held-out gate evaluation is required before promotion; "
+                "run the explicit gate-evaluation step first",
+                details={"gates": gates})
         if not gates["passed"]:
             raise ValidationError(
                 "promotion gates failed; candidate cannot be promoted",
@@ -207,6 +264,7 @@ class ImprovementRegistry:
             "promoted_by": reviewer.strip(), "promoted_at": _now(),
             "accuracy": exp["report"]["overall"]["accuracy"],
         }
+        self._require_transition(exp, "promoted")
         exp["status"] = "promoted"
         exp["updated_at"] = _now()
         self._save()
