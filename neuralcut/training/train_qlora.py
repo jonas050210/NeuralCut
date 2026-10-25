@@ -484,12 +484,14 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False,
         "global_step": getattr(getattr(trainer, "state", None), "global_step", None),
         "log_history": _json_safe(getattr(getattr(trainer, "state", None), "log_history", [])),
     }
-    (out_dir / "training_metrics.json").write_text(
+    metrics_path = out_dir / "training_metrics.json"
+    metrics_path.write_text(
         json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
     manifest = {
         "job": "orchestrator-qlora-sft", "base_model": config.base_model,
         "base_model_license": BASE_MODEL_INFO["license"],
         "config": asdict(config), "dataset_files": files,
+        "metrics_file": metrics_path.name,
         "resumed_from": resume, "seed": config.seed,
         "promotion": "adapter is a candidate only; promotion requires the "
                      "improvement registry gates + human spot-check",
@@ -497,7 +499,7 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False,
     (out_dir / "training_manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return {"adapter_dir": str(adapter_dir), "manifest": manifest,
-            "resumed_from": resume, "metrics_file": str(out_dir / "training_metrics.json")}
+            "resumed_from": resume, "metrics_file": str(metrics_path)}
 
 
 # --------------------------------------------------------------------------

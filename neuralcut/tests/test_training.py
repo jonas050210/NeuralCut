@@ -127,6 +127,7 @@ def test_mocked_training_run_saves_adapter_and_manifest(
     manifest = json.loads(
         (tmp_path / "run" / "training_manifest.json").read_text())
     assert manifest["base_model"] == tq.DEFAULT_BASE_MODEL
+    assert manifest["metrics_file"] == "training_metrics.json"
     assert "candidate only" in manifest["promotion"]
     assert result["resumed_from"] is None
     assert _FakeTrainer.resumed_from is None
@@ -136,6 +137,7 @@ def test_mocked_training_run_saves_adapter_and_manifest(
     metrics = json.loads(Path(result["metrics_file"]).read_text())
     assert metrics["training"]["train_loss"] == 0.5
     assert metrics["evaluation"]["eval_loss"] == 0.4
+    assert metrics["log_history"] == [{"loss": 0.5}]
     assert metrics["global_step"] == 4
 
     checkpoint = tmp_path / "run" / "checkpoint-3"
