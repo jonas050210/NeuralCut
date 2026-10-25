@@ -59,6 +59,11 @@ class FeedbackStore:
         if kind not in {"plan_accepted", "plan_rejected", "plan_undone",
                         "correction", "rating", "note"}:
             raise ValidationError(f"unknown feedback kind: {kind!r}")
+        rating = event.get("rating")
+        if rating is not None and (
+                not isinstance(rating, int) or isinstance(rating, bool)
+                or not 1 <= rating <= 5):
+            raise ValidationError("rating must be an integer between 1 and 5")
         record = {
             "id": uuid.uuid4().hex,
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -75,6 +80,13 @@ class FeedbackStore:
 
     def list(self, limit: int = 100) -> list[dict[str, Any]]:
         return self._load()[-limit:]
+
+    def count(self) -> int:
+        """Count records without parsing the whole file."""
+        if not self._file.is_file():
+            return 0
+        with self._file.open("rb") as fh:
+            return sum(1 for line in fh if line.strip())
 
     def export(self) -> dict[str, Any]:
         events = self._load()

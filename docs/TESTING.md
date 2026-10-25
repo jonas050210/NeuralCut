@@ -38,6 +38,7 @@ The Python suite lives in `neuralcut/tests/` and is configured by `pyproject.tom
 | Media helpers | `tests/media_helpers.py` | Generates short synthetic videos with ffmpeg lavfi (color + sine audio); never personal media. Render/probe tests skip cleanly when no ffmpeg binary is available |
 | Intelligence | `test_intelligence.py` | Moving-car detection/tracking (displacement, direction, mask coverage at the car's expected position), RLE roundtrip, scene-cut shots, speech segments, honest transcript-unavailable, fingerprint cache + invalidation, cancellation, full analysis API flow (timeline untouched) |
 | Effects | `test_effects.py` | Keyframe linear/hold evaluation, registry validation (incl. per-parameter keyframe ranges), effect CRUD/preset/reorder/disable, exact persistence + undo/redo, v2→v3 migration, pixel-verified renders (brightness Δ, glow spread outside a bright square, bloom, two-track compositing, opacity blending), effects API flow |
+| Training | `test_training.py` | Split hygiene (held-out/GGUF refused, held-out never exported), SFT trace generation contains real planner tool calls, VRAM estimator behavior, preflight problem reporting without deps/GPU, CLI dry-run (writes SFT files, executes nothing), unconfirmed training refusal, mocked-stack run (quantization/LoRA/resume/adapter save/manifest). **No real GPU/model training is tested.** |
 | Improvement | `test_improvement.py` | Deterministic/disjoint splits + provenance, training dataset validation + dry-run refusal, opt-in feedback (refuses while disabled; CRUD/export when enabled), benchmark isolation (sentinel user project byte-identical) + exact builtin baseline, promotion gates (reviewer + spot-check mandatory, regression blocks), rollback, candidate config smuggling rejection, API flow |
 | Agent | `test_agent.py` | Tool-schema rejection, read-only auto-answer, draft→approve→execute→undo-plan, reject, ambiguity/clarification (zero steps), invalid model output fallback, execution-time re-validation with nonexistent IDs, cloud double opt-in routing, full chat→render-job API flow |
 
@@ -127,6 +128,12 @@ The Phase 1 development environment was Linux without Rust. Before calling the W
    - confirm the window loads and closing it stops the Python backend.
 
 Record Windows version, Python version, commands, and failures in the PR/issue rather than silently adjusting docs.
+
+## Recorded hardening results (2026-10-24, Linux dev environment)
+
+- Full suite: **82 passed** (75 prior + 7 hardening regressions in `test_hardening.py`). Ruff, `node --check`, and `scripts/check_packaging.py` clean.
+- Covered regressions: live-logging preservation across benchmark runs, held-out sealing (routine runs + evaluate endpoint cannot reach held-out; promotion blocked until audited gate evaluation), experiment state machine (no demotion/duplicate promotion/invalid rollback), registry audit-failure visibility without operation failure, feedback rating validation, job payload redaction, queued-job cancellation (no spurious timeout failure).
+- The Windows installer is built by the `windows-installer` CI workflow; check its latest run for the artifact. Physical-machine install/launch remains unverified.
 
 ## Recorded Phase 6–7 results (2026-10-24, Linux dev environment)
 

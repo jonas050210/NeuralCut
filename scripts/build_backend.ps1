@@ -12,7 +12,7 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 # PyInstaller entry point: neuralcut/__main__.py delegates to main().
 & .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --onefile `
     --name neuralcut-backend `
-    --add-data "neuralcut/frontend;neuralcut/frontend" `
+    --add-data "$RepoRoot\neuralcut\frontend;neuralcut/frontend" `
     --distpath build\sidecar-dist --workpath build\sidecar-work `
     --specpath build `
     neuralcut\__main__.py

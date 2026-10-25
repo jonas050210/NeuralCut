@@ -95,6 +95,10 @@ def test_experiment_gates_promotion_and_rollback(container) -> None:  # noqa: AN
         "dataset_fingerprint": "fp",
     }
     service.registry.record_evaluation(exp["id"], good)
+    # Promotion additionally requires the audited held-out gate evaluation.
+    with pytest.raises(ValidationError):
+        service.registry.promote(exp["id"], reviewer="jonas", spot_check_confirmed=True)
+    service.registry.record_gate_evaluation(exp["id"], dict(good, held_out_accessed=True))
     # Human gates: reviewer + explicit spot-check are mandatory.
     with pytest.raises(ValidationError):
         service.registry.promote(exp["id"], reviewer="", spot_check_confirmed=True)
@@ -109,9 +113,9 @@ def test_experiment_gates_promotion_and_rollback(container) -> None:  # noqa: AN
     assert "candidate_promoted" in kinds and "champion_rolled_back" in kinds
 
     # Regression gate blocks promotion.
-    bad = dict(good, overall={"accuracy": 0.5})
+    bad = dict(good, overall={"accuracy": 0.5}, held_out_accessed=True)
     exp2 = service.create_experiment("candidate-b", {})
-    service.registry.record_evaluation(exp2["id"], bad)
+    service.registry.record_gate_evaluation(exp2["id"], bad)
     with pytest.raises(ValidationError):
         service.registry.promote(exp2["id"], reviewer="jonas", spot_check_confirmed=True)
 

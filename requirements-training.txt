@@ -1,0 +1,16 @@
+# NeuralCut OPTIONAL training environment (home PC only).
+# Install into a SEPARATE venv (.venv-training) -- never into the app venv:
+#   python -m venv .venv-training
+#   .venv-training\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   .venv-training\Scripts\python.exe -m pip install -r requirements-training.txt
+# Versions chosen for: RTX 4060 Ti (Ada, sm_89), Qwen3 support
+# (transformers>=4.51), Windows bitsandbytes wheels (>=0.44).
+transformers>=4.51,<5
+peft>=0.13,<1
+trl>=0.12,<1
+datasets>=3,<5
+accelerate>=1,<2
+bitsandbytes>=0.44,<1
+sentencepiece>=0.2
+protobuf>=5
+safetensors>=0.4

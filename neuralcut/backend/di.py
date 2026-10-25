@@ -21,10 +21,17 @@ from neuralcut.logging import setup_logging
 
 
 class Container:
-    def __init__(self, context: AppContext) -> None:
+    def __init__(self, context: AppContext, *, configure_logging: bool = True) -> None:
         self.context = context
         self.settings = context.settings
-        self.logger = setup_logging(context)
+        if configure_logging:
+            self.logger = setup_logging(context)
+        else:
+            # Isolated/secondary containers (benchmarks, tests) must never
+            # close, replace, or redirect the live application's logging.
+            import logging
+
+            self.logger = logging.getLogger("neuralcut")
 
         self.job_manager = JobManager(
             max_workers=self.settings.jobs.max_workers,

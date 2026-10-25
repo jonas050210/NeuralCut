@@ -47,6 +47,15 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install ruff==0.17.2
 
+      - name: Packaging configuration check
+        run: python scripts/check_packaging.py
+
+      - name: Run tests (self-improvement hardening)
+        run: python -m pytest -q neuralcut/tests/test_hardening.py
+
+      - name: Run tests (training pipeline, mocked stack)
+        run: python -m pytest -q neuralcut/tests/test_training.py
+
       - name: Lint (ruff) and frontend syntax
         run: |
           python -m ruff check neuralcut

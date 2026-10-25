@@ -69,6 +69,13 @@ class Job:
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
+        details = dict(self.details)
+        if "payload" in details:
+            payload = details["payload"]
+            details["payload"] = {
+                "redacted": True,
+                "keys": sorted(payload) if isinstance(payload, dict) else [],
+            }
         return {
             "id": self.id,
             "type": self.type,
@@ -78,7 +85,7 @@ class Job:
             "progress_message": self.progress_message,
             "result": self.result,
             "error": self.error,
-            "details": self.details,
+            "details": details,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -213,10 +220,17 @@ class JobManager:
     # ---- internals --------------------------------------------------------
 
     def _run(self, job: Job) -> None:
-        acquired = self._semaphore.acquire(timeout=300)
-        if not acquired:
-            self._fail(job, "job timed out waiting for a worker")
-            return
+        # Wait for a worker slot indefinitely, but stay responsive to
+        # cancellation: a queued job must never fail spuriously just
+        # because the queue was long (previously: hard 300s timeout).
+        acquired = False
+        while not acquired:
+            if job.cancel_event.is_set():
+                with self._lock:
+                    job.status = JobStatus.CANCELLED
+                    job.finished_at = _now()
+                return
+            acquired = self._semaphore.acquire(timeout=0.25)
 
         try:
             with self._lock:
