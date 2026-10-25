@@ -10,8 +10,10 @@ Connects to the Phase 6 dry-run specification
   non-zero when requirements are missing.
 - Real training requires the explicit `--confirm-training` flag, the
   separate training environment (requirements-training.txt), and a CUDA
-  GPU. It writes a LoRA adapter + `training_manifest.json`; the adapter
-  is afterwards only a *candidate* for the human-gated promotion flow.
+  GPU. It writes a LoRA adapter, `training_metrics.json` (trainer metrics +
+  log history, written as soon as training completed) and
+  `training_manifest.json`; the adapter is afterwards only a *candidate*
+  for the human-gated promotion flow.
 - Held-out data is never trained on and never written to the SFT files;
   requesting it raises.
 
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -377,6 +380,42 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write a JSON artifact atomically (a killed write never leaves a stub)."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                   encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _collect_metrics(trainer: Any, train_result: Any) -> dict[str, Any]:
+    """Snapshot what the trainer actually reported after `train()`.
+
+    `evaluation` stays ``None`` until evaluation really ran and returned
+    metrics; `evaluation_error` explains why it is missing.
+    """
+    state = getattr(trainer, "state", None)
+    return {
+        "training": _json_safe(getattr(train_result, "metrics", {}) or {}),
+        "evaluation": None,
+        "evaluation_error": None,
+        "global_step": getattr(state, "global_step", None),
+        "log_history": _json_safe(getattr(state, "log_history", []) or []),
+    }
+
+
+def _run_evaluation(trainer: Any) -> tuple[Any, str | None]:
+    """Final evaluation; a failure is reported in the metrics, never fatal.
+
+    Training already finished at this point, so its artifacts must survive
+    an evaluation error (for example an OOM in the eval forward pass).
+    """
+    try:
+        return _json_safe(trainer.evaluate()), None
+    except Exception as exc:  # noqa: BLE001 - a broken eval must not lose metrics
+        return None, f"{type(exc).__name__}: {exc}"
+
+
 def _load_stack() -> dict[str, Any]:
     """Import the heavy training stack (isolated so tests can stub it)."""
     import torch
@@ -473,31 +512,38 @@ def run_training(config: TrainingJobConfig, *, confirm: bool = False,
         eval_dataset=stack["Dataset"].from_list(eval_data),
         processing_class=tokenizer)
     train_result = trainer.train(resume_from_checkpoint=resume)
-    training_metrics = getattr(train_result, "metrics", {}) or {}
-    evaluation_metrics = trainer.evaluate()
+    metrics_path = out_dir / "training_metrics.json"
+    # Persist the training metrics *first*: evaluation and adapter saving can
+    # fail on their own, and a finished training run must never end up with
+    # no metrics artifact at all.
+    metrics = _collect_metrics(trainer, train_result)
+    _write_json(metrics_path, metrics)
+
+    metrics["evaluation"], metrics["evaluation_error"] = _run_evaluation(trainer)
+    # Refresh after evaluation: the trainer appends its own eval log entries.
+    metrics["global_step"] = getattr(getattr(trainer, "state", None), "global_step", None)
+    metrics["log_history"] = _json_safe(
+        getattr(getattr(trainer, "state", None), "log_history", []) or [])
+    _write_json(metrics_path, metrics)
+
     adapter_dir = out_dir / "adapter"
     trainer.save_model(str(adapter_dir))
     tokenizer.save_pretrained(str(adapter_dir))
-    metrics = {
-        "training": _json_safe(training_metrics),
-        "evaluation": _json_safe(evaluation_metrics),
-        "global_step": getattr(getattr(trainer, "state", None), "global_step", None),
-        "log_history": _json_safe(getattr(getattr(trainer, "state", None), "log_history", [])),
-    }
-    (out_dir / "training_metrics.json").write_text(
-        json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
     manifest = {
         "job": "orchestrator-qlora-sft", "base_model": config.base_model,
         "base_model_license": BASE_MODEL_INFO["license"],
         "config": asdict(config), "dataset_files": files,
         "resumed_from": resume, "seed": config.seed,
+        "metrics_file": str(metrics_path),
+        "evaluation": ("completed" if metrics["evaluation"] is not None
+                       else f"not available ({metrics['evaluation_error']})"),
         "promotion": "adapter is a candidate only; promotion requires the "
                      "improvement registry gates + human spot-check",
     }
-    (out_dir / "training_manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    _write_json(out_dir / "training_manifest.json", manifest)
     return {"adapter_dir": str(adapter_dir), "manifest": manifest,
-            "resumed_from": resume, "metrics_file": str(out_dir / "training_metrics.json")}
+            "resumed_from": resume, "metrics_file": str(metrics_path),
+            "evaluation_error": metrics["evaluation_error"]}
 
 
 # --------------------------------------------------------------------------
@@ -538,9 +584,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.confirm_training:
             result = run_training(config, confirm=True,
                                   resume_from_checkpoint=args.resume)
-            print(json.dumps({"adapter_dir": result["adapter_dir"],
-                              "resumed_from": result["resumed_from"],
-                              "metrics_file": result["metrics_file"]}, indent=2))
+            summary = {"adapter_dir": result["adapter_dir"],
+                       "resumed_from": result["resumed_from"],
+                       "metrics_file": result["metrics_file"]}
+            if result.get("evaluation_error"):
+                summary["evaluation_error"] = result["evaluation_error"]
+            print(json.dumps(summary, indent=2))
             return 0
         # Default: dry run only.
         check = preflight(config)

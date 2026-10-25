@@ -61,9 +61,15 @@ app are untouched by this.
   config validator rejects `held_out` in train/eval splits.
 - Outputs: `adapters/<name>/data/sft_{train,eval}.jsonl`,
   `checkpoint-*` per epoch, `adapter/` (final LoRA adapter),
-  `training_manifest.json` (base model, license, config, dataset
-  fingerprint, seed, resume info), and `training_metrics.json` (train/eval
-  metrics and trainer log history).
+  `training_metrics.json` and `training_manifest.json` (base model,
+  license, config, dataset fingerprint, seed, resume info, metrics file,
+  evaluation status).
+- `training_metrics.json` is written as soon as `trainer.train()` returns
+  (train result metrics, `global_step`, full trainer log history) and
+  rewritten after the final evaluation. If that evaluation cannot run,
+  the file records `evaluation: null` plus the `evaluation_error` instead
+  of losing the run's metrics; `training_manifest.json` is written last,
+  after the adapter, so its presence means the run finished completely.
 
 ## Failure recovery
 
@@ -76,7 +82,9 @@ app are untouched by this.
   new output directory instead.
 - Training loss is logged each step and evaluation runs at each epoch;
   `training_metrics.json` records final train/evaluation metrics and the
-  trainer log history alongside `training_manifest.json`.
+  trainer log history alongside `training_manifest.json`. Metrics survive
+  a failed final evaluation or failed adapter save — only the manifest
+  (written last) is then missing, and the metrics explain why.
 - Preflight failures list exactly which dependency is missing; the app
   installation is never affected.
 
@@ -94,7 +102,8 @@ app are untouched by this.
 
 - Verified here (CPU, mocked stack): CLI dry-run, preflight reporting,
   dataset/split enforcement, SFT trace generation, VRAM estimator,
-  checkpoint-resume logic, adapter-save + manifest wiring.
+  checkpoint-resume logic, adapter-save + manifest wiring, and metrics
+  persistence (written before the manifest, kept when evaluation fails).
 - **Not verified:** any real CUDA/QLoRA run, real model quality, actual
   VRAM/time on a 4060 Ti, TRL API drift against the pinned ranges. The
   first real run is yours, with `--preflight` first.

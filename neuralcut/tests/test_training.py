@@ -77,6 +77,8 @@ class _FakeTrainer:
     saved_to: str | None = None
     resumed_from = "unset"
     instance = None
+    # Set by a test to simulate a final evaluation that cannot run.
+    evaluate_error: Exception | None = None
 
     def __init__(self, **kwargs) -> None:  # noqa: ANN003
         self.kwargs = kwargs
@@ -88,6 +90,10 @@ class _FakeTrainer:
         return types.SimpleNamespace(metrics={"train_loss": 0.5, "train_runtime": 2.0})
 
     def evaluate(self):
+        if _FakeTrainer.evaluate_error is not None:
+            raise _FakeTrainer.evaluate_error
+        # Real Trainer.evaluate() appends its result to the log history.
+        self.state.log_history.append({"eval_loss": 0.4, "epoch": 2.0, "step": 4})
         return {"eval_loss": 0.4, "eval_runtime": 0.5}
 
     def save_model(self, path) -> None:  # noqa: ANN001
@@ -141,6 +147,75 @@ def test_mocked_training_run_saves_adapter_and_manifest(
     checkpoint = tmp_path / "run" / "checkpoint-3"
     checkpoint.mkdir()
     assert tq.find_latest_checkpoint(tmp_path / "run") == str(checkpoint)
+
+
+def test_successful_run_writes_metrics_before_manifest_with_log_history(
+        monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
+    """Regression: a finished run must always leave `training_metrics.json`.
+
+    The artifact pair observed for `adapters/orchestrator-2026-10-25-run1`
+    (manifest present, metrics missing) must be impossible: metrics are
+    written before the manifest and before the adapter is saved.
+    """
+    writes: list[str] = []
+    write_json = tq._write_json
+
+    def _record(path, payload):  # noqa: ANN001
+        writes.append(Path(path).name)
+        write_json(path, payload)
+
+    monkeypatch.setattr(tq, "_write_json", _record)
+    monkeypatch.setattr(tq, "_load_stack", _fake_stack)
+    monkeypatch.setattr(tq, "preflight", lambda cfg: {"ready": True, "problems": []})
+    config = tq.TrainingJobConfig(output_dir=str(tmp_path / "run"))
+
+    result = tq.run_training(config, confirm=True)
+
+    metrics_path = tmp_path / "run" / "training_metrics.json"
+    assert metrics_path.is_file()
+    assert writes.count("training_metrics.json") >= 1
+    assert writes.index("training_metrics.json") < writes.index("training_manifest.json")
+
+    metrics = json.loads(metrics_path.read_text())
+    assert metrics["training"]["train_loss"] == 0.5
+    assert metrics["evaluation"]["eval_loss"] == 0.4
+    assert metrics["evaluation_error"] is None
+    assert metrics["global_step"] == 4
+    # Trainer log history is preserved, including the evaluation entry the
+    # trainer appended while evaluating.
+    assert metrics["log_history"] == _FakeTrainer.instance.state.log_history
+    assert metrics["log_history"][0] == {"loss": 0.5}
+    assert any("eval_loss" in entry for entry in metrics["log_history"])
+    assert result["evaluation_error"] is None
+    assert json.loads((tmp_path / "run" / "training_manifest.json").read_text())[
+        "evaluation"] == "completed"
+
+
+def test_metrics_and_manifest_survive_a_failed_final_evaluation(
+        monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
+    """A finished training run keeps its metrics if the final eval fails."""
+    monkeypatch.setattr(_FakeTrainer, "evaluate_error",
+                        RuntimeError("Cannot evaluate: simulated OOM"))
+    monkeypatch.setattr(tq, "_load_stack", _fake_stack)
+    monkeypatch.setattr(tq, "preflight", lambda cfg: {"ready": True, "problems": []})
+    config = tq.TrainingJobConfig(output_dir=str(tmp_path / "run"))
+
+    result = tq.run_training(config, confirm=True)
+
+    metrics = json.loads(Path(result["metrics_file"]).read_text())
+    assert metrics["training"]["train_loss"] == 0.5
+    assert metrics["global_step"] == 4
+    assert metrics["log_history"] == [{"loss": 0.5}]
+    # Evaluation never happened, so it must not be claimed.
+    assert metrics["evaluation"] is None
+    assert "RuntimeError: Cannot evaluate: simulated OOM" in metrics["evaluation_error"]
+    assert result["evaluation_error"] == metrics["evaluation_error"]
+
+    manifest = json.loads((tmp_path / "run" / "training_manifest.json").read_text())
+    assert manifest["evaluation"].startswith("not available")
+    assert manifest["metrics_file"] == str(Path(result["metrics_file"]))
+    assert (Path(result["adapter_dir"]) / "adapter_model.safetensors").is_file()
+    assert not list((tmp_path / "run").glob("*.tmp"))
 
 
 def _valid_checkpoint(path: Path, *, global_step: int = 2, max_steps: int = 4) -> None:
