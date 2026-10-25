@@ -5,6 +5,11 @@ name: Windows Installer
 # (packaging is heavy); artifacts are NOT GitHub Releases.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - "scripts/build_backend.ps1"
+      - ".github/workflows/windows-installer.yml"
 
 jobs:
   installer:
